@@ -1,4 +1,4 @@
-import Icon from "./icon";
+import Icon from "./Icon.jsx";
 import { formatBytes } from "../utils/format";
 
 export default function Sidebar({
