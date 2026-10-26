@@ -6,7 +6,6 @@ import { API_ENDPOINTS, buildDocumentPath } from "./config/endpoint";
 import { apiRequest, apiUrl } from "./api/client";
 import { logError } from "./utils/logger";
 
-import Icon from "./components/icon";
 import Sidebar from "./components/Sidebar";
 import ChatPanel from "./components/ChatPanel";
 

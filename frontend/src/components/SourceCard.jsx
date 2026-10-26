@@ -1,5 +1,5 @@
-import Icon from "./icon.js";
-import HighlightText from "./highlighttext.jsx";
+import Icon from "./Icon.jsx";
+import HighlightText from "./HighlightText.jsx";
 import { formatPercent } from "../utils/format.js";
 
 export default function SourceCard({

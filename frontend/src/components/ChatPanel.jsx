@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
-
-import Icon from "./icon";
+import Icon from "./Icon.jsx";
 import SourceCard from "./SourceCard.jsx";
-import SettingsPopover from "./SettingsPopover";
 
 export default function ChatPanel({
   messages,
@@ -53,54 +51,11 @@ export default function ChatPanel({
 
   return (
     <main className="chat-panel">
-      <div className="chat-toolbar">
-        <span
-          className={`connection-badge ${apiStatus}`}
-          role="status"
-        >
-          <span />
-          {apiStatus === "checking"
-            ? "Checking"
-            : apiStatus === "online"
-              ? "Online"
-              : "Offline"}
-        </span>
 
-        <button
-          type="button"
-          className="icon-button"
-          title="New conversation"
-          aria-label="New conversation"
-          onClick={onNewConversation}
-        >
-          <Icon name="clock" size={22} />
-        </button>
-
-        <button
-          type="button"
-          className={`icon-button ${
-            settingsOpen ? "active" : ""
-          }`}
-          title="Settings"
-          aria-label="Settings"
-          onClick={onToggleSettings}
-        >
-          <Icon name="settings" size={22} />
-        </button>
-      </div>
-
-      <SettingsPopover
-        open={settingsOpen}
-        onClose={onToggleSettings}
-        apiStatus={apiStatus}
-      />
 
       <div className="chat-scroll">
         {messages.length === 0 ? (
           <div className="welcome-state">
-            <div className="welcome-icon">
-              <Icon name="file" size={28} />
-            </div>
 
             <h2>Ask your documents anything.</h2>
 
@@ -221,16 +176,5 @@ export default function ChatPanel({
         </p>
       </div>
     </main>
-  );
-}
-export default function SourceCard({
-  source,
-  question,
-  onOpenSource,
-}) {
-  return (
-    <section className="source-card">
-      {/* Your source card content */}
-    </section>
   );
 }
