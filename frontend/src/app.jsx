@@ -206,10 +206,10 @@ function App() {
     <div className="rag-app">
       <header className="topbar">
         <div className="app-heading">
-          <strong>PDF Search Assistant</strong>
+          <strong>RAG</strong>
 
           <span>
-            Search your documents using keyword and semantic search
+            Retrieval-Augmented Generation using Ollama
           </span>
         </div>
       </header>
