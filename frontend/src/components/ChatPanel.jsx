@@ -51,8 +51,6 @@ export default function ChatPanel({
 
   return (
     <main className="chat-panel">
-
-
       <div className="chat-scroll">
         {messages.length === 0 ? (
           <div className="welcome-state">
