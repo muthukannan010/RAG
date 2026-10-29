@@ -1,54 +1,54 @@
-from pydantic import BaseModel, Field, field_validator
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+from app.core.config import settings
+from app.models.schema import SearchRequest, SearchResponse
+from app.services.retrieval import semantic_search
 
 
-class DocumentSummary(BaseModel):
-    id: str
-    filename: str
-    size_bytes: int
-    page_count: int
-    chunk_count: int
-    status: str
-    created_at: str
-    updated_at: str
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/search",
+    tags=["Search"],
+)
 
 
-class DocumentListResponse(BaseModel):
-    documents: list[DocumentSummary]
+@router.post(
+    "",
+    response_model=SearchResponse,
+)
+def search_documents(request: SearchRequest):
+    top_k = (
+        request.top_k
+        if request.top_k is not None
+        else settings.semantic_top_k
+    )
 
+    try:
+        results = semantic_search(
+            query=request.query,
+            top_k=top_k,
+        )
 
-class DocumentMutationResponse(BaseModel):
-    message: str
-    document: DocumentSummary | None = None
+        return {
+            "query": request.query,
+            "answer": None,
+            "retrieval_mode": "semantic",
+            "results": results,
+        }
 
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
 
-class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=4000)
-    top_k: int | None = Field(default=None, ge=1, le=50)
+    except Exception as exc:
+        logger.exception("Semantic search failed.")
 
-    @field_validator("query")
-    @classmethod
-    def validate_query(cls, value: str) -> str:
-        value = value.strip()
-
-        if not value:
-            raise ValueError("The query cannot be empty.")
-
-        return value
-
-
-class SearchResult(BaseModel):
-    chunk_id: str
-    document_id: str
-    filename: str
-    page_number: int
-    content: str
-    semantic_score: float
-    relevance_score: float
-    bbox: list[list[float]]
-
-
-class SearchResponse(BaseModel):
-    query: str
-    answer: str | None = None
-    retrieval_mode: str = "semantic"
-    results: list[SearchResult]
+        raise HTTPException(
+            status_code=500,
+            detail="The server could not search the documents.",
+        ) from exc
