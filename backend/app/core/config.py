@@ -14,6 +14,19 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Local LLM settings
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:8b"
+    ollama_timeout_seconds: int = 120
+
+    # RAG context preparation
+    rag_max_context_chunks: int = 5
+    rag_max_context_chars: int = 12000
+
+    # Generation options
+    llm_max_output_tokens: int = 512
+    llm_temperature: float = 0.1
+
     app_name: str = "Local RAG Assistant"
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
@@ -31,8 +44,8 @@ class Settings(BaseSettings):
     chunk_size_chars: int = 600
     chunk_overlap_chars: int = 150
 
-    semantic_top_k: int = 5
-    min_semantic_score: float = 0.20
+    semantic_top_k: int = 3
+    min_semantic_score: float = 0.60
 
     max_upload_mb: int = 100
 
@@ -66,6 +79,30 @@ class Settings(BaseSettings):
         if not -1.0 <= self.min_semantic_score <= 1.0:
             raise ValueError(
                 "MIN_SEMANTIC_SCORE must be between -1 and 1."
+            )
+        if self.ollama_timeout_seconds <= 0:
+            raise ValueError(
+                "OLLAMA_TIMEOUT_SECONDS must be positive."
+            )
+
+        if self.rag_max_context_chunks <= 0:
+            raise ValueError(
+                "RAG_MAX_CONTEXT_CHUNKS must be positive."
+            )
+
+        if self.rag_max_context_chars <= 0:
+            raise ValueError(
+                "RAG_MAX_CONTEXT_CHARS must be positive."
+            )
+
+        if self.llm_max_output_tokens <= 0:
+            raise ValueError(
+                "LLM_MAX_OUTPUT_TOKENS must be positive."
+            )
+
+        if not 0 <= self.llm_temperature <= 2:
+            raise ValueError(
+                "LLM_TEMPERATURE must be between 0 and 2."
             )
 
         return self
