@@ -16,6 +16,21 @@ export default function SourceCard({
       <div className="source-top-line" />
 
       <div className="source-meta">
+        <div className="source-meta">
+  {source.sourceRef && (
+    <strong className="source-reference">
+      [{source.sourceRef}]
+    </strong>
+  )}
+
+  <span className="source-filename">
+    {source.filename}
+  </span>
+
+  {source.page != null && (
+    <span>(Page {source.page})</span>
+  )}
+</div>
         <span className="source-filename">
           {source.filename}
         </span>

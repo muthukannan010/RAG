@@ -1139,3 +1139,8 @@ code {
     justify-content: center;
   }
 }
+.source-reference {
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 700;
+}
