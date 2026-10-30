@@ -52,3 +52,37 @@ class SearchResponse(BaseModel):
     answer: str | None = None
     retrieval_mode: str = "semantic"
     results: list[SearchResult]
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("The query cannot be empty.")
+
+        return value
+
+
+class SearchResult(BaseModel):
+    source_ref: str
+    chunk_id: str
+    document_id: str
+    filename: str
+    page_number: int
+    content: str
+    semantic_score: float
+    relevance_score: float
+    bbox: list[list[float]]
+
+
+class SearchResponse(BaseModel):
+    query: str
+    answer: str | None = None
+    citations: list[str] = Field(default_factory=list)
+    not_found: bool = False
+    retrieval_mode: str = "semantic"
+    results: list[SearchResult]

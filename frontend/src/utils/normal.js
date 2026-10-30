@@ -145,6 +145,10 @@ export function normalizeSource(item, index = 0) {
       item.pdf_url ??
       metadata.file_url ??
       null,
+    sourceRef:
+      item.source_ref ??
+      item.sourceRef ??
+      null,
   };
 }
 
