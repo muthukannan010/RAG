@@ -85,7 +85,7 @@ function App() {
 
     const timer = window.setInterval(
       checkHealth,
-      15000
+      45000000000
     );
 
     return () => {

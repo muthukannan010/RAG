@@ -3,12 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
-  },
+    "scripts": {
+      "dev": "concurrently -k -n BACKEND,FRONTEND -c green,cyan \"npm:dev:backend\" \"npm:dev:frontend\"",
+
+      "dev:backend": "cd ..\\backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+
+      "dev:frontend": "wait-on -t 60000 http-get://127.0.0.1:8000/api/v1/health && vite --host 127.0.0.1",
+
+      "build": "vite build",
+      "lint": "eslint .",
+      "preview": "vite preview"
+},
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -16,10 +21,12 @@
   "devDependencies": {
     "@eslint/js": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^10.0.6",
     "eslint": "^10.0.0",
     "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-react-refresh": "^0.5.0",
     "globals": "^17.0.0",
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "wait-on": "^9.5.1"
   }
 }

@@ -1,4 +1,5 @@
-from functools import lru_cache
+
+import logging
 from threading import Lock
 
 import numpy as np
@@ -7,33 +8,55 @@ from sentence_transformers import SentenceTransformer
 from app.core.config import settings
 
 
+logger = logging.getLogger(__name__)
+
+_model = None
+_model_key = None
 _model_lock = Lock()
 
 
-@lru_cache(maxsize=1)
-def _load_model(model_name: str, device: str):
-    """
-    Load the embedding model once per model/device combination.
-    """
+def get_embedding_model():
+    """Load the embedding model once and reuse it."""
 
-    with _model_lock:
-        return SentenceTransformer(
-            model_name,
-            device=device,
-        )
+    global _model, _model_key
 
-
-def _encode(texts, mode: str):
-    if not texts:
-        return np.empty((0, 0), dtype=np.float32)
-
-    model = _load_model(
+    model_key = (
         settings.embedding_model,
         settings.embedding_device,
     )
 
-    # Use task-aware methods when supported by the installed
-    # Sentence Transformers model/API.
+    if _model is None or _model_key != model_key:
+        with _model_lock:
+            if _model is None or _model_key != model_key:
+                logger.info(
+                    "Loading local embedding model: %s",
+                    settings.embedding_model,
+                )
+
+                _model = SentenceTransformer(
+                    settings.embedding_model,
+                    device=settings.embedding_device,
+                    local_files_only=True,
+                )
+
+                _model_key = model_key
+
+                logger.info("Embedding model loaded successfully.")
+
+    return _model
+
+
+def _encode(texts: list[str], mode: str) -> np.ndarray:
+    """Generate normalized embeddings for documents or queries."""
+
+    if not texts:
+        return np.empty((0, 0), dtype=np.float32)
+
+    if any(not isinstance(text, str) or not text.strip() for text in texts):
+        raise ValueError("Embedding inputs must contain non-empty text.")
+
+    model = get_embedding_model()
+
     if mode == "query" and hasattr(model, "encode_query"):
         vectors = model.encode_query(
             texts,
@@ -42,10 +65,7 @@ def _encode(texts, mode: str):
             show_progress_bar=False,
         )
 
-    elif (
-        mode == "document"
-        and hasattr(model, "encode_document")
-    ):
+    elif mode == "document" and hasattr(model, "encode_document"):
         vectors = model.encode_document(
             texts,
             normalize_embeddings=True,
@@ -72,5 +92,8 @@ def embed_texts(texts: list[str]) -> np.ndarray:
 
 def embed_query(query: str) -> np.ndarray:
     """Generate an embedding for a user's question."""
+
+    if not query or not query.strip():
+        raise ValueError("The search query cannot be empty.")
 
     return _encode([query], mode="query")[0]

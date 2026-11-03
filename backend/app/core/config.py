@@ -13,10 +13,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
+    reset_data_on_startup: bool = True
     # Local LLM settings
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen3:8b"
+    ollama_model: str = "mistral-nemo:12b"
     ollama_timeout_seconds: int = 120
 
     # RAG context preparation
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     chunk_overlap_chars: int = 150
 
     semantic_top_k: int = 3
-    min_semantic_score: float = 0.60
+    min_semantic_score: float = 0.40
 
     max_upload_mb: int = 100
 

@@ -2,7 +2,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-
+import shutil
+from pathlib import Path
 from app.api.routes import documents, search
 from app.core.config import settings
 from app.core.logging_config import configure_logging
@@ -16,9 +17,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Initialize persistent storage when FastAPI starts.
-    """
+
+    # Start every new application run with an empty workspace.
+    if settings.reset_data_on_startup:
+        reset_application_data()
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.documents_dir.mkdir(parents=True, exist_ok=True)
@@ -27,20 +29,11 @@ async def lifespan(app: FastAPI):
     sqlite_store.initialize_database()
     vector_store.get_collection()
 
-    # Remove inactive/orphaned vectors left by interrupted
-    # uploads, replacements or deletions.
-    vector_store.cleanup_inactive_versions()
-
-    logger.info(
-        "Application startup complete. Storage: %s",
-        settings.data_dir,
-    )
+    logger.info("Application startup complete.")
 
     yield
 
     logger.info("Application shutdown complete.")
-
-
 app = FastAPI(
     title=settings.app_name,
     description=(
@@ -72,3 +65,24 @@ def health_check():
         "application": settings.app_name,
         "retrieval_mode": "semantic",
     }
+def reset_application_data():
+    """Clear previously uploaded documents and their indexes."""
+
+    # Remove uploaded PDFs
+    shutil.rmtree(
+        settings.documents_dir,
+        ignore_errors=True,
+    )
+
+    # Remove ChromaDB vectors
+    shutil.rmtree(
+        settings.chroma_db_path,
+        ignore_errors=True,
+    )
+
+    # Remove SQLite database and temporary journal files
+    for suffix in ("", "-wal", "-shm"):
+        db_file = Path(f"{settings.sqlite_db_path}{suffix}")
+        db_file.unlink(missing_ok=True)
+
+    logger.info("Previous application data cleared.")
