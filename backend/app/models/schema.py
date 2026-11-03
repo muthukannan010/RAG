@@ -42,8 +42,8 @@ class SearchResult(BaseModel):
     filename: str
     page_number: int
     content: str
-    semantic_score: float
-    relevance_score: float
+    semantic_score: float | None
+    relevance_score: float | None
     bbox: list[list[float]]
 
 
@@ -74,8 +74,8 @@ class SearchResult(BaseModel):
     filename: str
     page_number: int
     content: str
-    semantic_score: float
-    relevance_score: float
+    semantic_score: float | None
+    relevance_score: float | None
     bbox: list[list[float]]
 
 

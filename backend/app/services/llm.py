@@ -29,8 +29,11 @@ Rules:
    the answer in the citations field.
 6. Cite only source IDs supplied in the request.
 7. Do not invent documents, page numbers, facts, or source IDs.
-8. Keep the answer concise and directly address the question.
-9. Return only the structured response requested by the API.
+8. For broad document-overview questions, summarize the main topics
+   supported by all supplied passages instead of requiring exact wording
+   from the question to appear in a passage.
+9. Keep the answer concise and directly address the question.
+10. Return only the structured response requested by the API.
 """.strip()
 
 
@@ -180,7 +183,7 @@ def generate_grounded_answer(
         "format": _response_schema(source_refs),
         "stream": False,
         "think": False,
-        "keep_alive": "5m",
+        "keep_alive": "30m",
         "options": {
             "temperature": settings.llm_temperature,
             "num_predict": settings.llm_max_output_tokens,

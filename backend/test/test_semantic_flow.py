@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import ingestion, retrieval
+from app.models.schema import SearchResponse
+from app.services import ingestion, rag, retrieval
 
 
 def fake_embedding(text: str) -> np.ndarray:
@@ -287,3 +288,73 @@ def test_chunker_preserves_page_and_bounding_boxes():
         chunk["id"]
         for chunk in chunks
     }) == len(chunks)
+
+
+def test_document_overview_uses_representative_chunks(
+    monkeypatch,
+):
+    assert rag._is_document_overview_query("what is the file")
+    assert rag._is_document_overview_query("tell about the files")
+
+    chunks = [
+        {
+            "chunk_id": f"chunk-{index}",
+            "document_id": "document-1",
+            "version_id": "version-1",
+            "filename": "sample.pdf",
+            "page_number": index + 1,
+            "content": f"Passage from page {index + 1}.",
+            "bbox": [],
+        }
+        for index in range(10)
+    ]
+    captured = {}
+
+    monkeypatch.setattr(
+        rag.sqlite_store,
+        "get_active_document_chunks",
+        lambda: chunks,
+    )
+
+    def reject_semantic_search(*args, **kwargs):
+        raise AssertionError(
+            "Document overview queries should not use semantic search."
+        )
+
+    monkeypatch.setattr(
+        rag,
+        "semantic_search",
+        reject_semantic_search,
+    )
+
+    def answer_from_sources(query, sources):
+        captured["sources"] = sources
+        return {
+            "answer": "The PDF covers several topics.",
+            "citations": ["S1", "S2", "S3", "S4", "S5"],
+            "not_found": False,
+        }
+
+    monkeypatch.setattr(
+        rag,
+        "generate_grounded_answer",
+        answer_from_sources,
+    )
+
+    result = rag.answer_question("Tell about the file")
+
+    assert result["not_found"] is False
+    assert result["retrieval_mode"] == "document_overview"
+    assert len(captured["sources"]) == 5
+    assert [
+        source["page_number"]
+        for source in captured["sources"]
+    ] == [1, 3, 5, 8, 10]
+    assert all(
+        source["semantic_score"] is None
+        and source["relevance_score"] is None
+        for source in result["results"]
+    )
+    assert SearchResponse.model_validate(result).retrieval_mode == (
+        "document_overview"
+    )

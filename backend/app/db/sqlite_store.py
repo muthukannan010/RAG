@@ -121,6 +121,36 @@ def get_active_version_ids() -> list[str]:
     return [row["active_version_id"] for row in rows]
 
 
+def get_active_document_chunks() -> list[dict]:
+    with _connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                chunks.id AS chunk_id,
+                chunks.document_id,
+                chunks.version_id,
+                documents.filename,
+                chunks.page_number,
+                chunks.text AS content,
+                chunks.bbox_json
+            FROM chunks
+            JOIN documents
+                ON documents.id = chunks.document_id
+                AND documents.active_version_id = chunks.version_id
+            WHERE documents.status = 'ready'
+            ORDER BY documents.updated_at DESC, chunks.chunk_index
+            """
+        ).fetchall()
+
+    return [
+        {
+            **dict(row),
+            "bbox": json.loads(row["bbox_json"]),
+        }
+        for row in rows
+    ]
+
+
 def save_document_version(document_record, chunks):
     """
     Insert a document or atomically switch an existing document
