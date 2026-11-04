@@ -41,18 +41,35 @@ export default function SourceCard({
       </div>
 
       <div className="score-line">
-        Keyword Match:{" "}
-        <strong>{formatPercent(source.keyword)}</strong>
+        Keyword Rank:{" "}
+        <strong>
+          {source.keywordRank == null
+            ? "—"
+            : `#${source.keywordRank}`}
+        </strong>
       </div>
 
       <div className="score-line">
-        Semantic Match:{" "}
+        Semantic Similarity:{" "}
         <strong>{formatPercent(source.semantic)}</strong>
       </div>
 
       <div className="score-line">
-        Final Relevance:{" "}
-        <strong>{formatPercent(source.relevance)}</strong>
+        Semantic Rank:{" "}
+        <strong>
+          {source.semanticRank == null
+            ? "—"
+            : `#${source.semanticRank}`}
+        </strong>
+      </div>
+
+      <div className="score-line">
+        Hybrid RRF Score:{" "}
+        <strong>
+          {source.hybridScore == null
+            ? "—"
+            : Number(source.hybridScore).toFixed(6)}
+        </strong>
       </div>
 
       {source.text && (

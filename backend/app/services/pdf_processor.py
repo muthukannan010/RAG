@@ -181,3 +181,45 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict]:
         raise ValueError(
             "The uploaded file is not a readable PDF."
         ) from exc
+
+import fitz
+
+
+def extract_page_words(page):
+    """
+    Extract words and normalized display coordinates
+    from a PDF page.
+    """
+
+    page_width = page.rect.width
+    page_height = page.rect.height
+
+    if page_width <= 0 or page_height <= 0:
+        raise ValueError("Invalid PDF page dimensions.")
+
+    extracted_words = []
+
+    for word in page.get_text("words", sort=True):
+        x0, y0, x1, y1, text = word[:5]
+
+        if not text.strip():
+            continue
+
+        # PyMuPDF text coordinates are relative to the
+        # unrotated page. Convert them for displayed orientation.
+        rect = fitz.Rect(x0, y0, x1, y1) * page.rotation_matrix
+
+        extracted_words.append({
+            "text": text,
+            "x": round(rect.x0 / page_width * 100, 4),
+            "y": round(rect.y0 / page_height * 100, 4),
+            "width": round(rect.width / page_width * 100, 4),
+            "height": round(rect.height / page_height * 100, 4),
+        })
+
+    return {
+        "text": " ".join(word["text"] for word in extracted_words),
+        "locations": extracted_words,
+        "page_width": page_width,
+        "page_height": page_height,
+    }

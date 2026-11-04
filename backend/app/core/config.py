@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 from pydantic import model_validator
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-    reset_data_on_startup: bool = True
+    reset_data_on_startup: bool = False
     # Local LLM settings
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "mistral-nemo:12b"
@@ -44,7 +45,15 @@ class Settings(BaseSettings):
     chunk_size_chars: int = 600
     chunk_overlap_chars: int = 150
 
-    semantic_top_k: int = 3
+    keyword_top_k: int = 20
+    semantic_top_k: int = 20
+    hybrid_top_k: int = 5
+    keyword_weight: float = 0.40
+    semantic_weight: float = 0.60
+    rrf_k: int = 60
+    enable_keyword_search: bool = True
+    enable_semantic_search: bool = True
+    remove_duplicate_chunks: bool = True
     min_semantic_score: float = 0.40
 
     max_upload_mb: int = 100
@@ -66,10 +75,48 @@ class Settings(BaseSettings):
                 "and smaller than CHUNK_SIZE_CHARS."
             )
 
-        if self.semantic_top_k <= 0:
+        if (
+            self.keyword_top_k <= 0
+            or self.semantic_top_k <= 0
+            or self.hybrid_top_k <= 0
+        ):
             raise ValueError(
-                "SEMANTIC_TOP_K must be greater than zero."
+                "Retrieval top-K settings must be greater than zero."
             )
+
+        if self.rrf_k <= 0:
+            raise ValueError("RRF_K must be greater than zero.")
+
+        if (
+            not math.isfinite(self.keyword_weight)
+            or not math.isfinite(self.semantic_weight)
+            or self.keyword_weight < 0
+            or self.semantic_weight < 0
+        ):
+            raise ValueError("Retrieval weights must be non-negative.")
+
+        if not (
+            self.enable_keyword_search
+            or self.enable_semantic_search
+        ):
+            raise ValueError(
+                "At least one retrieval method must be enabled."
+            )
+
+        if self.enable_keyword_search and self.enable_semantic_search:
+            total_weight = self.keyword_weight + self.semantic_weight
+            if total_weight <= 0:
+                raise ValueError(
+                    "At least one retrieval weight must be positive."
+                )
+            self.keyword_weight /= total_weight
+            self.semantic_weight /= total_weight
+        elif self.enable_keyword_search:
+            self.keyword_weight = 1.0
+            self.semantic_weight = 0.0
+        else:
+            self.keyword_weight = 0.0
+            self.semantic_weight = 1.0
 
         if self.max_upload_mb <= 0:
             raise ValueError(

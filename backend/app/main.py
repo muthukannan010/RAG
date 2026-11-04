@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     description=(
-        "On-premises PDF ingestion and semantic search API."
+        "On-premises PDF ingestion and hybrid retrieval API."
     ),
     version="0.1.0",
     lifespan=lifespan,
@@ -60,10 +60,17 @@ app.include_router(
     tags=["Health"],
 )
 def health_check():
+    if settings.enable_keyword_search and settings.enable_semantic_search:
+        retrieval_mode = "hybrid"
+    elif settings.enable_keyword_search:
+        retrieval_mode = "keyword"
+    else:
+        retrieval_mode = "semantic"
+
     return {
         "status": "ok",
         "application": settings.app_name,
-        "retrieval_mode": "semantic",
+        "retrieval_mode": retrieval_mode,
     }
 def reset_application_data():
     """Clear previously uploaded documents and their indexes."""

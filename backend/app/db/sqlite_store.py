@@ -42,6 +42,14 @@ def initialize_database() -> None:
     with _connection() as connection:
         connection.execute("PRAGMA journal_mode = WAL")
 
+        fts_exists = connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'chunks_fts'
+            """
+        ).fetchone() is not None
+
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS documents (
@@ -77,7 +85,52 @@ def initialize_database() -> None:
             CREATE INDEX IF NOT EXISTS
                 idx_documents_status
             ON documents(status);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts
+            USING fts5(
+                text,
+                content = 'chunks',
+                content_rowid = 'rowid',
+                tokenize = 'porter unicode61'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS chunks_fts_insert
+            AFTER INSERT ON chunks
+            BEGIN
+                INSERT INTO chunks_fts(rowid, text)
+                VALUES (new.rowid, new.text);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS chunks_fts_delete
+            AFTER DELETE ON chunks
+            BEGIN
+                INSERT INTO chunks_fts(chunks_fts, rowid, text)
+                VALUES ('delete', old.rowid, old.text);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS chunks_fts_update
+            AFTER UPDATE OF text ON chunks
+            BEGIN
+                INSERT INTO chunks_fts(chunks_fts, rowid, text)
+                VALUES ('delete', old.rowid, old.text);
+                INSERT INTO chunks_fts(rowid, text)
+                VALUES (new.rowid, new.text);
+            END;
             """
+        )
+
+        if not fts_exists:
+            connection.execute(
+                "INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')"
+            )
+
+
+def rebuild_keyword_index() -> None:
+    """Rebuild the FTS5 index from the existing SQLite chunk rows."""
+
+    with _connection() as connection:
+        connection.execute(
+            "INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')"
         )
 
 
@@ -146,6 +199,51 @@ def get_active_document_chunks() -> list[dict]:
         {
             **dict(row),
             "bbox": json.loads(row["bbox_json"]),
+        }
+        for row in rows
+    ]
+
+
+def search_active_chunks(
+    match_expression: str,
+    top_k: int,
+) -> list[dict]:
+    with _connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                chunks.id AS chunk_id,
+                chunks.document_id,
+                chunks.version_id,
+                documents.filename,
+                chunks.page_number,
+                chunks.text AS content,
+                chunks.bbox_json,
+                bm25(chunks_fts) AS keyword_score
+            FROM chunks_fts
+            JOIN chunks
+                ON chunks.rowid = chunks_fts.rowid
+            JOIN documents
+                ON documents.id = chunks.document_id
+                AND documents.active_version_id = chunks.version_id
+            WHERE chunks_fts MATCH ?
+                AND documents.status = 'ready'
+            ORDER BY keyword_score ASC, chunks.id ASC
+            LIMIT ?
+            """,
+            (match_expression, top_k),
+        ).fetchall()
+
+    return [
+        {
+            "chunk_id": row["chunk_id"],
+            "document_id": row["document_id"],
+            "version_id": row["version_id"],
+            "filename": row["filename"],
+            "page_number": row["page_number"],
+            "content": row["content"],
+            "bbox": json.loads(row["bbox_json"]),
+            "keyword_score": row["keyword_score"],
         }
         for row in rows
     ]
