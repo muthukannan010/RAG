@@ -114,8 +114,12 @@ export function normalizeSource(item, index = 0) {
     keyword:
       item.keyword_match_percent ??
       item.keyword_match ??
-      item.keyword_score ??
       metadata.keyword_match ??
+      null,
+
+    keywordRank:
+      item.keyword_rank ??
+      metadata.keyword_rank ??
       null,
 
     semantic:
@@ -123,6 +127,16 @@ export function normalizeSource(item, index = 0) {
       item.semantic_match ??
       item.semantic_score ??
       metadata.semantic_match ??
+      null,
+
+    semanticRank:
+      item.semantic_rank ??
+      metadata.semantic_rank ??
+      null,
+
+    hybridScore:
+      item.hybrid_score ??
+      metadata.hybrid_score ??
       null,
 
     relevance:

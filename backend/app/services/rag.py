@@ -4,8 +4,8 @@ from collections import defaultdict
 
 from app.core.config import settings
 from app.db import sqlite_store
+from app.services.hybrid_retrieval import hybrid_search
 from app.services.llm import generate_grounded_answer
-from app.services.retrieval import semantic_search
 
 
 logger = logging.getLogger(__name__)
@@ -171,9 +171,7 @@ def answer_question(
     top_k: int | None = None,
 ) -> dict:
     """
-    Execute semantic retrieval and grounded answer generation.
-
-    This stage does not use keyword search or hybrid ranking.
+    Execute hybrid retrieval and grounded answer generation.
     """
 
     query = query.strip()
@@ -189,11 +187,16 @@ def answer_question(
         retrieved = _document_overview_sources()
         retrieval_mode = "document_overview"
     else:
-        retrieved = semantic_search(
+        retrieved = hybrid_search(
             query=query,
             top_k=top_k,
         )
-        retrieval_mode = "semantic"
+        if settings.enable_keyword_search and settings.enable_semantic_search:
+            retrieval_mode = "hybrid"
+        elif settings.enable_keyword_search:
+            retrieval_mode = "keyword"
+        else:
+            retrieval_mode = "semantic"
 
     # Handle absent evidence without calling the LLM.
     if not retrieved:
@@ -275,16 +278,27 @@ def answer_question(
         + ", ".join(f"[{ref}]" for ref in citations)
     )
 
-    # Display the passages actually cited by the model.
+    sources_by_ref = {
+        source["source_ref"]: source
+        for source in display_sources
+    }
     cited_sources = [
+        sources_by_ref[reference]
+        for reference in citations
+        if reference in sources_by_ref
+    ]
+    related_sources = [
         source
         for source in display_sources
-        if source["source_ref"] in citations
+        if source["source_ref"] not in citations
     ]
+    ordered_sources = (cited_sources + related_sources)[:3]
 
     logger.info(
-        "Generated a grounded answer with %s cited sources.",
-        len(cited_sources),
+        "Generated a grounded answer from %s retrieved sources; "
+        "%s were cited.",
+        len(display_sources),
+        len(citations),
     )
 
     return {
@@ -293,5 +307,5 @@ def answer_question(
         "citations": citations,
         "not_found": False,
         "retrieval_mode": retrieval_mode,
-        "results": cited_sources,
+        "results": ordered_sources,
     }

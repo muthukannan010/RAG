@@ -20,7 +20,7 @@ def fake_embedding(text: str) -> np.ndarray:
     It is not a substitute for evaluating real semantic quality.
     """
 
-    vector = np.zeros(256, dtype=np.float32)
+    vector = np.zeros(384, dtype=np.float32)
 
     for token in re.findall(r"[a-z0-9]+", text.lower()):
         digest = hashlib.sha256(
@@ -290,6 +290,40 @@ def test_chunker_preserves_page_and_bounding_boxes():
     }) == len(chunks)
 
 
+def test_semantic_search_still_filters_by_cosine_similarity(
+    monkeypatch,
+):
+    candidates = [
+        {"chunk_id": "relevant", "semantic_score": 0.8},
+        {"chunk_id": "weak", "semantic_score": 0.2},
+    ]
+    monkeypatch.setattr(
+        retrieval.sqlite_store,
+        "get_active_version_ids",
+        lambda: ["version-1"],
+    )
+    monkeypatch.setattr(
+        retrieval,
+        "embed_query",
+        lambda query: [0.0],
+    )
+    monkeypatch.setattr(
+        retrieval.vector_store,
+        "query_chunks",
+        lambda **kwargs: candidates,
+    )
+    monkeypatch.setattr(
+        retrieval.settings,
+        "min_semantic_score",
+        0.4,
+    )
+
+    results = retrieval.semantic_search("test query", top_k=2)
+
+    assert [item["chunk_id"] for item in results] == ["relevant"]
+    assert results[0]["relevance_score"] == 0.8
+
+
 def test_document_overview_uses_representative_chunks(
     monkeypatch,
 ):
@@ -316,15 +350,15 @@ def test_document_overview_uses_representative_chunks(
         lambda: chunks,
     )
 
-    def reject_semantic_search(*args, **kwargs):
+    def reject_hybrid_search(*args, **kwargs):
         raise AssertionError(
-            "Document overview queries should not use semantic search."
+            "Document overview queries should not use hybrid search."
         )
 
     monkeypatch.setattr(
         rag,
-        "semantic_search",
-        reject_semantic_search,
+        "hybrid_search",
+        reject_hybrid_search,
     )
 
     def answer_from_sources(query, sources):
@@ -358,3 +392,45 @@ def test_document_overview_uses_representative_chunks(
     assert SearchResponse.model_validate(result).retrieval_mode == (
         "document_overview"
     )
+
+
+def test_search_puts_cited_result_first_and_returns_two_related_results(
+    monkeypatch,
+):
+    retrieved = [
+        {
+            "chunk_id": f"chunk-{index}",
+            "document_id": "document-1",
+            "filename": "sample.pdf",
+            "page_number": index + 1,
+            "content": f"Relevant passage {index + 1}.",
+            "semantic_score": 0.9 - index * 0.1,
+            "relevance_score": 0.9 - index * 0.1,
+            "bbox": [],
+        }
+        for index in range(5)
+    ]
+
+    monkeypatch.setattr(
+        rag,
+        "hybrid_search",
+        lambda query, top_k: retrieved,
+    )
+    monkeypatch.setattr(
+        rag,
+        "generate_grounded_answer",
+        lambda query, sources: {
+            "answer": "Supported by the third passage.",
+            "citations": ["S3"],
+            "not_found": False,
+        },
+    )
+
+    result = rag.answer_question("What is in this passage?")
+
+    assert result["citations"] == ["S3"]
+    assert len(result["results"]) == 3
+    assert [
+        source["source_ref"]
+        for source in result["results"]
+    ] == ["S3", "S1", "S2"]

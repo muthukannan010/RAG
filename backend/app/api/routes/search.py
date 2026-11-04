@@ -22,14 +22,14 @@ router = APIRouter(
 )
 def search_documents(request: SearchRequest):
     """
-    Retrieve semantically relevant PDF passages and generate
+    Retrieve hybrid-ranked PDF passages and generate
     a grounded answer using the local LLM.
     """
 
     top_k = (
         request.top_k
         if request.top_k is not None
-        else settings.semantic_top_k
+        else settings.hybrid_top_k
     )
 
     try:

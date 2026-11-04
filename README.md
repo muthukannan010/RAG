@@ -92,11 +92,9 @@ npm run dev
 This backend is the first stage of an on-premises PDF RAG
 application. It accepts user-selected PDFs, extracts text,
 creates page-aware chunks, generates local embeddings,
-persists the documents and vectors, and retrieves relevant
-passages using semantic search.
-
-This phase intentionally does not implement keyword search,
-hybrid ranking, or LLM-based answer generation.
+persists documents and vectors, and combines semantic and
+keyword retrieval to select relevant passages for local LLM
+answer generation.
 
 ## 2. Architecture
 
@@ -106,18 +104,18 @@ React frontend
 FastAPI routes
     |
     v
-Document service / Semantic retrieval service
+Document service / Hybrid retrieval service
     |
     +--> PDF extraction and chunking
     |
     +--> Sentence Transformers embeddings
     |
-    +--> SQLite document metadata and chunk records
+    +--> SQLite document metadata, chunk records and FTS5 index
     |
     +--> Chroma persistent vector index
     |
     v
-Semantic search results with source metadata
+Weighted RRF results with source metadata
 
 ## 3. Technology Choices
 
@@ -125,7 +123,8 @@ Semantic search results with source metadata
 - PyMuPDF: PDF text and bounding-box extraction.
 - Sentence Transformers: local text embeddings.
 - Chroma: persistent vector storage and similarity search.
-- SQLite: document records, active versions and chunk metadata.
+- SQLite and FTS5: document records, active versions, chunk
+  metadata and keyword search.
 - pytest: automated tests.
 
 ## 4. Project Structure
@@ -136,7 +135,7 @@ Semantic search results with source metadata
 - app/models: request and response schemas.
 - app/services: PDF processing, chunking, embeddings,
   ingestion, document management and retrieval.
-- tests: semantic pipeline tests.
+- tests: semantic, keyword and hybrid retrieval tests.
 
 ## 5. Setup
 
@@ -162,13 +161,15 @@ files before going offline.
 ## 7. Persistent Storage
 
 - data/documents/: versioned original PDF files.
-- data/rag.sqlite3: document records and chunk metadata.
+- data/rag.sqlite3: document records, chunk metadata and the
+  synchronized FTS5 keyword index.
 - data/chroma/: semantic vector index.
 
 SQLite controls which document versions are active.
-Semantic retrieval filters vector results by the active
-version IDs. Startup cleanup attempts to remove inactive
-or orphaned vectors.
+Semantic and keyword retrieval filter results to the active
+document versions. Startup cleanup attempts to remove inactive
+or orphaned vectors, and the FTS5 index is backfilled when first
+created.
 
 ## 8. Chunking
 
@@ -189,7 +190,7 @@ with representative PDFs and questions.
 | PUT | /api/v1/documents/{document_id} | Replace a PDF |
 | DELETE | /api/v1/documents/{document_id} | Delete a PDF |
 | GET | /api/v1/documents/{document_id}/file | Serve the original PDF |
-| POST | /api/v1/search | Semantic search |
+| POST | /api/v1/search | Hybrid retrieval and grounded answer |
 
 ## 10. Run the API
 
@@ -215,9 +216,9 @@ persistence flow, not semantic model quality.
 
 ## 12. Current Scope and Limitations
 
-- Semantic retrieval only.
-- No keyword retrieval or hybrid ranking yet.
-- No local LLM answer generation yet.
+- Hybrid retrieval combines SQLite FTS5 keyword matches and
+  Chroma semantic matches using weighted reciprocal rank fusion.
+- Local answer generation uses Ollama and cites retrieved sources.
 - Image-only scanned PDFs require OCR.
 - Bounding boxes currently represent extracted text blocks,
   not necessarily exact chunk-level word boundaries.
@@ -225,9 +226,9 @@ persistence flow, not semantic model quality.
 - SQLite, the filesystem and Chroma do not share a single
   atomic transaction; recovery and consistency must be tested.
 
-## 13. Next Milestone
+## 13. Retrieval Configuration
 
-Evaluate semantic retrieval using representative PDFs and
-questions, verify source attribution, and test persistence
-and deletion. Only after this baseline passes should keyword
-search and hybrid ranking be introduced.
+Keyword and semantic candidate counts, final hybrid top-K,
+RRF weights and the RRF constant are configurable through the
+backend settings. The default keyword and semantic weights are
+0.40 and 0.60, respectively.
