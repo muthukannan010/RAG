@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.core.config import settings
+from app.services.citations import quote_matches_source
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,11 @@ Rules:
    supported by all supplied passages instead of requiring exact wording
    from the question to appear in a passage.
 9. Keep the answer concise and directly address the question.
-10. Return only the structured response requested by the API.
+10. For every supplied source, provide a concise quotation copied exactly
+    from that source passage for highlighting. Prefer text relevant to the
+    question. Never paraphrase or invent a quote; use an empty quote only
+    if the source passage is empty.
+11. Return only the structured response requested by the API.
 """.strip()
 
 
@@ -89,6 +94,24 @@ def _response_schema(source_refs: list[str]) -> dict:
                 },
                 "uniqueItems": True,
             },
+            "source_quotes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source_ref": {
+                            "type": "string",
+                            "enum": source_refs,
+                        },
+                        "quote": {
+                            "type": "string",
+                        },
+                    },
+                    "required": ["source_ref", "quote"],
+                    "additionalProperties": False,
+                },
+                "uniqueItems": True,
+            },
             "not_found": {
                 "type": "boolean",
             },
@@ -96,6 +119,7 @@ def _response_schema(source_refs: list[str]) -> dict:
         "required": [
             "answer",
             "citations",
+            "source_quotes",
             "not_found",
         ],
         "additionalProperties": False,
@@ -119,6 +143,7 @@ def generate_grounded_answer(
         {
             "answer": str,
             "citations": list[str],
+            "source_quotes": list[dict],
             "not_found": bool
         }
     """
@@ -165,6 +190,10 @@ def generate_grounded_answer(
         "Return a JSON object with these fields:\n"
         "- answer: the grounded answer or an uncertainty message\n"
         "- citations: the source IDs that support the answer\n"
+        "- source_quotes: for every supplied source, return its source_ref "
+        "and a concise quote copied exactly from that source's content, "
+        "preferably relevant to the question; do not paraphrase or invent "
+        "text; use an empty quote only if the passage is empty\n"
         "- not_found: true when the evidence is insufficient\n"
     )
 
@@ -275,11 +304,16 @@ def generate_grounded_answer(
 
     answer = result.get("answer")
     citations = result.get("citations")
+    source_quotes = result.get(
+        "source_quotes",
+        result.get("citation_quotes", []),
+    )
     not_found = result.get("not_found")
 
     if (
         not isinstance(answer, str)
         or not isinstance(citations, list)
+        or not isinstance(source_quotes, list)
         or not isinstance(not_found, bool)
     ):
         raise LLMServiceError(
@@ -304,6 +338,7 @@ def generate_grounded_answer(
                 "uploaded documents to answer that question."
             ),
             "citations": [],
+            "source_quotes": [],
             "not_found": True,
         }
 
@@ -318,11 +353,44 @@ def generate_grounded_answer(
                 "document passages."
             ),
             "citations": [],
+            "source_quotes": [],
             "not_found": True,
         }
+
+    valid_quotes = []
+    for source_quote in source_quotes:
+        if not isinstance(source_quote, dict):
+            continue
+
+        source_ref = source_quote.get("source_ref")
+        quote = source_quote.get("quote")
+        source = next(
+            (
+                item
+                for item in sources
+                if item["source_ref"] == source_ref
+            ),
+            None,
+        )
+        if (
+            source_ref not in source_ids
+            or not isinstance(quote, str)
+            or not quote.strip()
+            or source is None
+        ):
+            continue
+
+        if quote_matches_source(quote, source["content"]):
+            valid_quotes.append(
+                {
+                    "source_ref": source_ref,
+                    "quote": quote.strip(),
+                }
+            )
 
     return {
         "answer": answer.strip(),
         "citations": valid_citations,
+        "source_quotes": valid_quotes,
         "not_found": False,
     }

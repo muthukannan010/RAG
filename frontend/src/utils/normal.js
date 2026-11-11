@@ -163,6 +163,10 @@ export function normalizeSource(item, index = 0) {
       item.source_ref ??
       item.sourceRef ??
       null,
+    quotedText:
+      item.quoted_text ??
+      item.quotedText ??
+      null,
   };
 }
 

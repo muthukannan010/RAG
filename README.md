@@ -75,6 +75,7 @@ failures without exposing sensitive document contents.
 | DELETE | /api/v1/documents/{id} | Delete PDF |
 | POST | /api/v1/search | Search documents |
 | GET | /api/v1/documents/{id}/file | Open the original PDF |
+| POST | /api/v1/documents/{id}/pages/{page}/preview | Render a PDF page and highlight a verified citation |
 
 The API paths must be adjusted to match the actual backend.
 

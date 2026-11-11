@@ -27,6 +27,10 @@ export const API_ENDPOINTS = {
   pdf:
     env.VITE_PDF_ENDPOINT_TEMPLATE ||
     "/api/v1/documents/{id}/file",
+
+  pdfPagePreview:
+    env.VITE_PDF_PAGE_PREVIEW_ENDPOINT_TEMPLATE ||
+    "/api/v1/documents/{id}/pages/{page}/preview",
 };
 
 export const APP_CONFIG = {

@@ -2,15 +2,39 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import "./app.css";
 
-import { API_ENDPOINTS, buildDocumentPath } from "./config/endpoint";
-import { apiRequest, apiUrl } from "./api/client";
+import { API_ENDPOINTS } from "./config/endpoint";
+import { apiRequest } from "./api/client";
 import { logError } from "./utils/logger";
 
 import Sidebar from "./components/Sidebar";
 import ChatPanel from "./components/ChatPanel";
+import PDFViewer from "./components/PDFViewer";
 
 import useDocuments from "./hooks/useDocuments";
 import useSearch from "./hooks/useSearch";
+
+function getViewerFromLocation() {
+  const match = window.location.pathname.match(
+    /^\/documents\/([^/]+)\/view\/?$/
+  );
+  if (!match) {
+    return null;
+  }
+
+  const stateSource = window.history.state?.pdfViewer;
+  if (stateSource?.documentId === decodeURIComponent(match[1])) {
+    return stateSource;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return {
+    documentId: decodeURIComponent(match[1]),
+    page: Number(params.get("page")) || 1,
+    sourceRef: params.get("citation"),
+    filename: "PDF document",
+    quotedText: null,
+  };
+}
 
 function App() {
   const fileInputRef = useRef(null);
@@ -20,6 +44,9 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [uploadTargetId, setUploadTargetId] = useState(null);
   const [localNotice, setLocalNotice] = useState("");
+  const [viewerSource, setViewerSource] = useState(
+    getViewerFromLocation
+  );
 
   const documentState = useDocuments();
   const searchState = useSearch();
@@ -58,6 +85,16 @@ function App() {
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    function handleHistoryChange() {
+      setViewerSource(getViewerFromLocation());
+    }
+
+    window.addEventListener("popstate", handleHistoryChange);
+    return () =>
+      window.removeEventListener("popstate", handleHistoryChange);
+  }, []);
 
   // Check backend health and recheck periodically.
   useEffect(() => {
@@ -152,49 +189,54 @@ function App() {
     setQuestion("");
   }
 
-  // Open the PDF returned by the API at the cited page.
+  // Keep the PDF viewer inside this app so chat state remains mounted.
   function openSource(source) {
-    let path = source.fileUrl;
-
-    if (!path && source.documentId) {
-      path = buildDocumentPath(
-        API_ENDPOINTS.pdf,
-        source.documentId
-      );
-    }
-
-    if (!path) {
+    const page = Number(source.page);
+    if (
+      !source.documentId ||
+      !Number.isInteger(page) ||
+      page < 1
+    ) {
       setLocalNotice(
-        "This source has no PDF URL or document ID."
+        "This source does not include a valid document and page."
       );
       return;
     }
 
     try {
+      const viewer = { ...source, page };
       const url = new URL(
-        apiUrl(path),
+        `/documents/${encodeURIComponent(source.documentId)}/view`,
         window.location.origin
       );
-
-      if (
-        source.page != null &&
-        Number.isFinite(Number(source.page))
-      ) {
-        url.hash = `page=${Number(source.page)}`;
+      url.searchParams.set("page", String(page));
+      if (source.sourceRef) {
+        url.searchParams.set("citation", source.sourceRef);
       }
 
-      window.open(
-        url.toString(),
-        "_blank",
-        "noopener,noreferrer"
+      window.history.pushState(
+        { pdfViewer: viewer },
+        "",
+        `${url.pathname}${url.search}`
       );
+      setViewerSource(viewer);
     } catch (error) {
-      logError("Could not open PDF source", {
+      logError("Could not open cited PDF page", {
         message: error.message,
       });
 
-      setLocalNotice("Could not open this PDF source.");
+      setLocalNotice("Could not open the cited PDF page.");
     }
+  }
+
+  function returnToChat() {
+    if (window.history.state?.pdfViewer) {
+      window.history.back();
+      return;
+    }
+
+    window.history.replaceState(null, "", "/");
+    setViewerSource(null);
   }
 
   function dismissNotice() {
@@ -215,38 +257,47 @@ function App() {
       </header>
 
       <div className="workspace">
-        <Sidebar
-          documents={documents}
-          isLoadingDocuments={isLoadingDocuments}
-          listError={listError}
-          onRefresh={refreshDocuments}
-          onUploadClick={openUploadPicker}
-          onReplaceDocument={replaceDocument}
-          onDeleteDocument={deleteDocument}
-          isBusy={isBusy}
-          isUploading={isUploading}
-          uploadProgress={uploadProgress}
-          deletingId={deletingId}
-          notice={localNotice || notice}
-          onDismissNotice={dismissNotice}
-        />
+        {viewerSource ? (
+          <PDFViewer
+            source={viewerSource}
+            onBack={returnToChat}
+          />
+        ) : (
+          <>
+            <Sidebar
+              documents={documents}
+              isLoadingDocuments={isLoadingDocuments}
+              listError={listError}
+              onRefresh={refreshDocuments}
+              onUploadClick={openUploadPicker}
+              onReplaceDocument={replaceDocument}
+              onDeleteDocument={deleteDocument}
+              isBusy={isBusy}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              deletingId={deletingId}
+              notice={localNotice || notice}
+              onDismissNotice={dismissNotice}
+            />
 
-        <ChatPanel
-          messages={messages}
-          question={question}
-          onQuestionChange={setQuestion}
-          onSendQuestion={sendQuestion}
-          isSearching={isSearching}
-          isBusy={isBusy}
-          onUploadClick={openUploadPicker}
-          onOpenSource={openSource}
-          onNewConversation={startNewConversation}
-          apiStatus={apiStatus}
-          settingsOpen={settingsOpen}
-          onToggleSettings={() =>
-            setSettingsOpen((current) => !current)
-          }
-        />
+            <ChatPanel
+              messages={messages}
+              question={question}
+              onQuestionChange={setQuestion}
+              onSendQuestion={sendQuestion}
+              isSearching={isSearching}
+              isBusy={isBusy}
+              onUploadClick={openUploadPicker}
+              onOpenSource={openSource}
+              onNewConversation={startNewConversation}
+              apiStatus={apiStatus}
+              settingsOpen={settingsOpen}
+              onToggleSettings={() =>
+                setSettingsOpen((current) => !current)
+              }
+            />
+          </>
+        )}
       </div>
 
       <input
