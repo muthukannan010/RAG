@@ -1,18 +1,25 @@
 import logging
 from pathlib import Path
+import uuid
 
 from fastapi import (
     APIRouter,
+    Body,
     File,
     HTTPException,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.core.config import settings
 from app.db import sqlite_store
-from app.models.schema import DocumentListResponse
+from app.models.schema import (
+    DocumentListResponse,
+    PDFPagePreviewRequest,
+)
 from app.services import document_service
+from app.services.citations import quote_matches_source
+from app.services.pdf_preview import render_pdf_page
 
 
 logger = logging.getLogger(__name__)
@@ -230,5 +237,101 @@ def get_document_file(document_id: str):
         headers={
             "Content-Disposition": "inline",
             "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/{document_id}/pages/{page_number}/preview")
+def get_document_page_preview(
+    document_id: str,
+    page_number: int,
+    request: PDFPagePreviewRequest = Body(...),
+):
+    """Render one PDF page and highlight a verified citation quote."""
+
+    try:
+        uuid.UUID(document_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="The document ID is invalid.",
+        ) from exc
+
+    record = sqlite_store.get_document(document_id)
+    if record is None or record["status"] != "ready":
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found.",
+        )
+
+    if page_number < 1 or page_number > record["page_count"]:
+        raise HTTPException(
+            status_code=404,
+            detail="The requested PDF page does not exist.",
+        )
+
+    quote = request.quoted_text
+    if quote:
+        active_chunks = sqlite_store.get_active_chunks_for_page(
+            document_id,
+            page_number,
+        )
+        quote_is_verified = any(
+            quote_matches_source(quote, chunk["content"])
+            for chunk in active_chunks
+        )
+        if not quote_is_verified:
+            quote = None
+
+    path = Path(record["stored_path"]).resolve()
+    allowed_root = settings.documents_dir.resolve()
+    if not path.is_relative_to(allowed_root):
+        logger.error(
+            "Invalid stored path detected for document %s.",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The stored document path is invalid.",
+        )
+
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="The PDF file is no longer available.",
+        )
+
+    try:
+        image, highlight_matched, highlight_y = render_pdf_page(
+            path,
+            page_number,
+            quote,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "Could not render page %s of document %s.",
+            page_number,
+            document_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The PDF page could not be rendered.",
+        ) from exc
+
+    return Response(
+        content=image,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store",
+            "X-PDF-Page-Count": str(record["page_count"]),
+            "X-PDF-Highlight-Matched": str(highlight_matched).lower(),
+            "X-PDF-Highlight-Y": (
+                "" if highlight_y is None else str(highlight_y)
+            ),
         },
     )

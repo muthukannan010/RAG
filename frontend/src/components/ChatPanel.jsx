@@ -2,6 +2,30 @@ import { useEffect, useRef } from "react";
 import Icon from "./Icon.jsx";
 import SourceCard from "./SourceCard.jsx";
 
+function renderAnswer(answer, sources, onOpenSource) {
+  return answer.split(/(\[S\d+\])/g).map((part, index) => {
+    const source = sources.find(
+      (item) => item.sourceRef === part.slice(1, -1)
+    );
+
+    if (!source) {
+      return part;
+    }
+
+    return (
+      <button
+        key={`${part}-${index}`}
+        type="button"
+        className="answer-citation"
+        onClick={() => onOpenSource(source)}
+        disabled={source.page == null}
+      >
+        {part}
+      </button>
+    );
+  });
+}
+
 export default function ChatPanel({
   messages,
   question,
@@ -92,7 +116,11 @@ export default function ChatPanel({
                     <>
                       {message.answer && (
                         <p className="assistant-answer">
-                          {message.answer}
+                          {renderAnswer(
+                            message.answer,
+                            message.results,
+                            onOpenSource
+                          )}
                         </p>
                       )}
 

@@ -50,6 +50,7 @@ class SearchResult(BaseModel):
     semantic_rank: int | None = None
     keyword_score: float | None = None
     hybrid_score: float | None = None
+    quoted_text: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -59,3 +60,7 @@ class SearchResponse(BaseModel):
     not_found: bool = False
     retrieval_mode: str = "hybrid"
     results: list[SearchResult]
+
+
+class PDFPagePreviewRequest(BaseModel):
+    quoted_text: str | None = Field(default=None, max_length=12000)

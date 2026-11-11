@@ -33,8 +33,11 @@ export default function useDocuments() {
 
   // Prevent simultaneous upload/delete operations.
   const operationInProgress = useRef(false);
+  const documentListRequestId = useRef(0);
 
   const loadDocuments = useCallback(async () => {
+    const requestId = ++documentListRequestId.current;
+
     setIsLoadingDocuments(true);
     setListError("");
 
@@ -44,18 +47,24 @@ export default function useDocuments() {
       const items = extractDocuments(payload);
       const normalized = items.map(normalizeDocument);
 
-      setDocuments(normalized);
+      if (requestId === documentListRequestId.current) {
+        setDocuments(normalized);
+      }
 
       return normalized;
     } catch (error) {
-      setListError(error.message);
-      logError("Failed to load documents", {
-        message: error.message,
-      });
+      if (requestId === documentListRequestId.current) {
+        setListError(error.message);
+        logError("Failed to load documents", {
+          message: error.message,
+        });
+      }
 
       return null;
     } finally {
-      setIsLoadingDocuments(false);
+      if (requestId === documentListRequestId.current) {
+        setIsLoadingDocuments(false);
+      }
     }
   }, []);
 

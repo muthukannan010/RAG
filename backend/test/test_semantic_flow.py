@@ -421,16 +421,37 @@ def test_search_puts_cited_result_first_and_returns_two_related_results(
         "generate_grounded_answer",
         lambda query, sources: {
             "answer": "Supported by the third passage.",
-            "citations": ["S3"],
+            "citations": ["S3", "S1"],
+            "source_quotes": [
+                {
+                    "source_ref": "S3",
+                    "quote": "Relevant passage 3.",
+                },
+                {
+                    "source_ref": "S2",
+                    "quote": "Relevant passage 2.",
+                },
+                {
+                    "source_ref": "S1",
+                    "quote": "This text is not in the source.",
+                },
+            ],
             "not_found": False,
         },
     )
 
     result = rag.answer_question("What is in this passage?")
 
-    assert result["citations"] == ["S3"]
+    assert result["citations"] == ["S3", "S1"]
     assert len(result["results"]) == 3
     assert [
         source["source_ref"]
         for source in result["results"]
-    ] == ["S3", "S1", "S2"]
+    ] == ["S1", "S3", "S2"]
+    assert result["results"][0]["quoted_text"] is None
+    assert result["results"][1]["quoted_text"] == (
+        "Relevant passage 3."
+    )
+    assert result["results"][2]["quoted_text"] == (
+        "Relevant passage 2."
+    )

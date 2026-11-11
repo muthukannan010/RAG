@@ -4,6 +4,7 @@ from collections import defaultdict
 
 from app.core.config import settings
 from app.db import sqlite_store
+from app.services.citations import quote_matches_source
 from app.services.hybrid_retrieval import hybrid_search
 from app.services.llm import generate_grounded_answer
 
@@ -278,19 +279,48 @@ def answer_question(
         + ", ".join(f"[{ref}]" for ref in citations)
     )
 
-    sources_by_ref = {
-        source["source_ref"]: source
-        for source in display_sources
+    verified_quotes = {}
+    source_content = {
+        source["source_ref"]: source["content"]
+        for source in context_sources
     }
+    for item in generated.get(
+        "source_quotes",
+        generated.get("citation_quotes", []),
+    ):
+        if not isinstance(item, dict):
+            continue
+
+        source_ref = item.get("source_ref")
+        quote = item.get("quote")
+        if source_ref not in source_content or not isinstance(quote, str):
+            continue
+
+        if quote_matches_source(
+            quote,
+            source_content[source_ref],
+        ):
+            verified_quotes[source_ref] = quote.strip()
+
+    cited_refs = set(citations)
+    result_sources = [
+        {
+            **source,
+            "quoted_text": verified_quotes.get(
+                source["source_ref"]
+            ),
+        }
+        for source in display_sources
+    ]
     cited_sources = [
-        sources_by_ref[reference]
-        for reference in citations
-        if reference in sources_by_ref
+        source
+        for source in result_sources
+        if source["source_ref"] in cited_refs
     ]
     related_sources = [
         source
-        for source in display_sources
-        if source["source_ref"] not in citations
+        for source in result_sources
+        if source["source_ref"] not in cited_refs
     ]
     ordered_sources = (cited_sources + related_sources)[:3]
 

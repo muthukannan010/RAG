@@ -1,4 +1,3 @@
-import Icon from "./Icon.jsx";
 import HighlightText from "./HighlightText.jsx";
 import { formatPercent } from "../utils/format.js";
 
@@ -16,21 +15,18 @@ export default function SourceCard({
       <div className="source-top-line" />
 
       <div className="source-meta">
-        <div className="source-meta">
-  {source.sourceRef && (
-    <strong className="source-reference">
-      [{source.sourceRef}]
-    </strong>
-  )}
+        {source.sourceRef && (
+          <button
+            type="button"
+            className="source-reference"
+            onClick={() => onOpenSource(source)}
+            disabled={!hasPage}
+            title={`Open cited page ${source.page ?? ""}`}
+          >
+            [{source.sourceRef}]
+          </button>
+        )}
 
-  <span className="source-filename">
-    {source.filename}
-  </span>
-
-  {source.page != null && (
-    <span>(Page {source.page})</span>
-  )}
-</div>
         <span className="source-filename">
           {source.filename}
         </span>
@@ -44,7 +40,7 @@ export default function SourceCard({
         Keyword Rank:{" "}
         <strong>
           {source.keywordRank == null
-            ? "—"
+            ? "**"
             : `#${source.keywordRank}`}
         </strong>
       </div>
@@ -71,6 +67,13 @@ export default function SourceCard({
             : Number(source.hybridScore).toFixed(6)}
         </strong>
       </div>
+
+      {source.quotedText && (
+        <blockquote className="citation-quote">
+          <strong>Passage highlighted in the PDF</strong>
+          <p>{source.quotedText}</p>
+        </blockquote>
+      )}
 
       {source.text && (
         <p className="source-snippet">

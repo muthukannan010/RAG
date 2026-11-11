@@ -6,9 +6,9 @@
     "scripts": {
       "dev": "concurrently -k -n BACKEND,FRONTEND -c green,cyan \"npm:dev:backend\" \"npm:dev:frontend\"",
 
-      "dev:backend": "cd ..\\backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+      "dev:backend": "cd ..\\backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001",
 
-      "dev:frontend": "wait-on -t 60000 http-get://127.0.0.1:8000/api/v1/health && vite --host 127.0.0.1",
+      "dev:frontend": "wait-on -t 60000 http-get://127.0.0.1:8001/api/v1/health && vite --host 127.0.0.1",
 
       "build": "vite build",
       "lint": "eslint .",

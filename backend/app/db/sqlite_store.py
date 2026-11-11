@@ -204,6 +204,31 @@ def get_active_document_chunks() -> list[dict]:
     ]
 
 
+def get_active_chunks_for_page(
+    document_id: str,
+    page_number: int,
+) -> list[dict]:
+    with _connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                chunks.id AS chunk_id,
+                chunks.text AS content
+            FROM chunks
+            JOIN documents
+                ON documents.id = chunks.document_id
+                AND documents.active_version_id = chunks.version_id
+            WHERE documents.id = ?
+                AND documents.status = 'ready'
+                AND chunks.page_number = ?
+            ORDER BY chunks.chunk_index
+            """,
+            (document_id, page_number),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
 def search_active_chunks(
     match_expression: str,
     top_k: int,
