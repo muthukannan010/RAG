@@ -84,6 +84,8 @@ export function normalizeSource(item, index = 0) {
   const metadata = item.metadata ?? {};
 
   return {
+    displayRank: index + 1,
+
     id: String(
       item.id ??
       item.chunk_id ??
@@ -115,6 +117,11 @@ export function normalizeSource(item, index = 0) {
       item.keyword_match_percent ??
       item.keyword_match ??
       metadata.keyword_match ??
+      null,
+
+    keywordScore:
+      item.keyword_score ??
+      metadata.keyword_score ??
       null,
 
     keywordRank:

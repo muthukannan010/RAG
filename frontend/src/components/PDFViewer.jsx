@@ -28,7 +28,9 @@ export default function PDFViewer({ source, onBack }) {
     const controller = new AbortController();
     let imageUrl = null;
     const quotedText =
-      page === Number(source.page) ? source.quotedText : null;
+      page === Number(source.page)
+        ? source.quotedText || source.text
+        : null;
 
     async function loadPage() {
       setIsLoading(true);
@@ -234,9 +236,8 @@ export default function PDFViewer({ source, onBack }) {
           <span>{supportingText}</span>
           {isCitationPage && !highlightMatched && !isLoading && (
             <small>
-              {source.quotedText
-                ? "The quotation could not be matched to PDF text. The cited page is shown without a highlight."
-                : "No exact LLM quotation was verified. The cited page is shown without a highlight."}
+              The passage could not be matched to PDF text. The cited
+              page is shown without a highlight.
             </small>
           )}
         </aside>

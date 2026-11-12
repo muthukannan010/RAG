@@ -840,6 +840,32 @@ code {
   animation: fadeSlideUp 0.3s ease;
 }
 
+.source-rank-toggle {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 1;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: #ffffff;
+  transition:
+    color var(--transition),
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.source-rank-toggle:hover {
+  color: var(--accent);
+  background: var(--accent-surface);
+  border-color: var(--border-strong);
+}
+
 .source-card:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
@@ -861,6 +887,7 @@ code {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+  padding-right: 36px;
   flex-wrap: wrap;
 }
 
@@ -885,6 +912,11 @@ code {
 .score-line strong {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.retrieved-rank {
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
 }
 
 .source-snippet {
