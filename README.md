@@ -174,7 +174,7 @@ created.
 
 ## 8. Chunking
 
-Initial chunk size: 1,000 characters.
+Initial chunk size: 600 characters.
 Initial overlap: 150 characters.
 
 Chunks retain their page number and bounding boxes.
