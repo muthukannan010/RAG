@@ -59,9 +59,10 @@ export async function apiRequest(path, options = {}) {
       message: error.message,
     });
 
-    throw new Error(
-      `Cannot connect to the backend. Check that FastAPI is running.`
-    );
+   throw new Error(
+  "Cannot connect to the backend. Check that FastAPI is running.",
+  { cause: error }
+);
   }
 
   const payload = await readResponse(response);

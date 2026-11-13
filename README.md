@@ -233,3 +233,8 @@ Keyword and semantic candidate counts, final hybrid top-K,
 RRF weights and the RRF constant are configurable through the
 backend settings. The default keyword and semantic weights are
 0.40 and 0.60, respectively.
+
+Numeric page requests such as “page no. 20” and “20th page”
+retrieve page 20 from active PDFs directly instead of relying
+on semantic similarity. Page context remains bounded by the
+configured RAG chunk and character limits.

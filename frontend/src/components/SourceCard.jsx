@@ -122,7 +122,7 @@ export default function SourceCard({
 
       {source.quotedText && (
         <blockquote className="citation-quote">
-          <strong>Passage highlighted in the PDF</strong>
+          <strong>Supporting passage</strong>
           <p>{source.quotedText}</p>
         </blockquote>
       )}

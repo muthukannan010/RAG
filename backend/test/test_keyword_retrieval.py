@@ -20,12 +20,17 @@ def keyword_database(tmp_path, monkeypatch):
     sqlite_store.initialize_database()
 
 
-def _save_version(version_id: str, chunks: list[dict]) -> None:
+def _save_version(
+    version_id: str,
+    chunks: list[dict],
+    document_id: str = "document-1",
+    filename: str = "sample.pdf",
+) -> None:
     sqlite_store.save_document_version(
         {
-            "id": "document-1",
-            "filename": "sample.pdf",
-            "stored_path": "sample.pdf",
+            "id": document_id,
+            "filename": filename,
+            "stored_path": filename,
             "size_bytes": 1,
             "page_count": 1,
             "chunk_count": len(chunks),
@@ -44,6 +49,41 @@ def _save_version(version_id: str, chunks: list[dict]) -> None:
             for index, chunk in enumerate(chunks)
         ],
     )
+
+
+def test_page_lookup_returns_only_active_chunks_across_documents(
+    keyword_database,
+):
+    _save_version(
+        "version-1",
+        [{"id": "first-page-20", "page_number": 20, "text": "first"}],
+        document_id="document-1",
+        filename="first.pdf",
+    )
+    _save_version(
+        "version-2",
+        [{"id": "second-page-20", "page_number": 20, "text": "second"}],
+        document_id="document-2",
+        filename="second.pdf",
+    )
+
+    initial_results = sqlite_store.get_active_chunks_for_page_number(20)
+    assert {item["chunk_id"] for item in initial_results} == {
+        "first-page-20",
+        "second-page-20",
+    }
+
+    _save_version(
+        "version-3",
+        [{"id": "first-page-21", "page_number": 21, "text": "updated"}],
+        document_id="document-1",
+        filename="first.pdf",
+    )
+
+    page_20_results = sqlite_store.get_active_chunks_for_page_number(20)
+    assert [item["chunk_id"] for item in page_20_results] == [
+        "second-page-20"
+    ]
 
 
 def test_keyword_query_normalizes_and_preserves_numbers():

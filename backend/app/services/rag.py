@@ -11,6 +11,17 @@ from app.services.llm import generate_grounded_answer
 
 logger = logging.getLogger(__name__)
 
+PAGE_NUMBER_PATTERNS = (
+    re.compile(
+        r"\bpage(?:\s+(?:number|no\.?))?\s*#?\s*(\d+)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(\d+)(?:st|nd|rd|th)\s+page\b",
+        re.IGNORECASE,
+    ),
+)
+
 DOCUMENT_OVERVIEW_PATTERNS = (
     re.compile(
         r"\b(?:tell|describe|summari[sz]e|summary|overview|explain)\b"
@@ -32,6 +43,15 @@ NO_ANSWER = (
     "I couldn't find enough information in the uploaded "
     "documents to answer that question."
 )
+
+
+def _requested_page_number(query: str) -> int | None:
+    for pattern in PAGE_NUMBER_PATTERNS:
+        match = pattern.search(query)
+        if match:
+            return int(match.group(1))
+
+    return None
 
 
 def _is_document_overview_query(query: str) -> bool:
@@ -180,11 +200,21 @@ def answer_question(
     if not query:
         raise ValueError("The question cannot be empty.")
 
+    requested_page = _requested_page_number(query)
     overview_query = _is_document_overview_query(query)
 
+    if requested_page is not None:
+        page_chunks = sqlite_store.get_active_chunks_for_page_number(
+            requested_page
+        )
+        retrieved = _select_overview_chunks(
+            page_chunks,
+            settings.rag_max_context_chunks,
+        )
+        retrieval_mode = "page"
     # Broad overview questions need representative passages, not
     # similarity matches to generic words like "file" or "document".
-    if overview_query:
+    elif overview_query:
         retrieved = _document_overview_sources()
         retrieval_mode = "document_overview"
     else:

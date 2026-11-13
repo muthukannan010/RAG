@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 from io import BytesIO
 from pathlib import Path
 
@@ -7,12 +8,36 @@ import pymupdf
 import pytesseract
 from PIL import Image
 
+from app.services.ocr import configure_tesseract
+
+
+configure_tesseract()
+
 
 logger = logging.getLogger(__name__)
 
+OCR_TRANSLATION = str.maketrans(
+    {
+        "þ": "p",
+        "ð": "d",
+        "æ": "ae",
+        "œ": "oe",
+        "ø": "o",
+    }
+)
+
 
 def _tokens(text: str) -> list[str]:
-    return re.findall(r"\w+", text.casefold(), flags=re.UNICODE)
+    normalized = unicodedata.normalize(
+        "NFKD",
+        text.casefold(),
+    ).translate(OCR_TRANSLATION)
+    normalized = "".join(
+        character
+        for character in normalized
+        if not unicodedata.combining(character)
+    )
+    return re.findall(r"\w+", normalized, flags=re.UNICODE)
 
 
 def _find_quote_rects(

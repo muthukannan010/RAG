@@ -229,6 +229,43 @@ def get_active_chunks_for_page(
     return [dict(row) for row in rows]
 
 
+def get_active_chunks_for_page_number(
+    page_number: int,
+) -> list[dict]:
+    with _connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                chunks.id AS chunk_id,
+                chunks.document_id,
+                chunks.version_id,
+                documents.filename,
+                chunks.page_number,
+                chunks.text AS content,
+                chunks.bbox_json
+            FROM chunks
+            JOIN documents
+                ON documents.id = chunks.document_id
+                AND documents.active_version_id = chunks.version_id
+            WHERE documents.status = 'ready'
+                AND chunks.page_number = ?
+            ORDER BY
+                documents.filename COLLATE NOCASE,
+                documents.id,
+                chunks.chunk_index
+            """,
+            (page_number,),
+        ).fetchall()
+
+    return [
+        {
+            **dict(row),
+            "bbox": json.loads(row["bbox_json"]),
+        }
+        for row in rows
+    ]
+
+
 def search_active_chunks(
     match_expression: str,
     top_k: int,

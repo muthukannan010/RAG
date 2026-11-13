@@ -62,6 +62,40 @@ def test_render_pdf_page_does_not_highlight_unmatched_text(
     assert image.startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_render_pdf_page_uses_ocr_to_highlight_scanned_text(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "scanned.pdf"
+    with pymupdf.open() as document:
+        page = document.new_page()
+        page.draw_rect(page.rect, fill=(1, 1, 1), color=(1, 1, 1))
+        document.save(path)
+
+    words = ["starf", "ok", "kostnadr", "vard", "af", "pessu"]
+    monkeypatch.setattr(
+        pdf_preview.pytesseract,
+        "image_to_data",
+        lambda image, output_type: {
+            "text": words,
+            "left": [20, 70, 100, 200, 250, 280],
+            "top": [40] * len(words),
+            "width": [40, 20, 90, 45, 20, 50],
+            "height": [12] * len(words),
+        },
+    )
+
+    image, matched, highlight_y = pdf_preview.render_pdf_page(
+        path,
+        1,
+        "starf ok kostnaðr varð af þessu",
+    )
+
+    assert matched is True
+    assert 0 <= highlight_y <= 1
+    assert image.startswith(b"\x89PNG\r\n\x1a\n")
+
+
 def test_render_pdf_page_rejects_an_invalid_page(tmp_path):
     path = tmp_path / "source.pdf"
     _create_pdf(path)
