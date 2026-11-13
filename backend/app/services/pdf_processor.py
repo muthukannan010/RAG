@@ -6,7 +6,10 @@ import pytesseract
 from PIL import Image
 from io import BytesIO
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+from app.services.ocr import configure_tesseract
+
+
+configure_tesseract()
 
 
 def extract_pdf_pages(pdf_bytes: bytes) -> list[dict]:

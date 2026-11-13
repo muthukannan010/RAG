@@ -394,6 +394,113 @@ def test_document_overview_uses_representative_chunks(
     )
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Explain what is in the 20th page",
+        "What is in page no. 20",
+    ],
+)
+def test_page_number_queries_use_that_page_across_active_documents(
+    monkeypatch,
+    query,
+):
+    page_chunks = [
+        {
+            "chunk_id": "first-page-20",
+            "document_id": "document-1",
+            "version_id": "version-1",
+            "filename": "first.pdf",
+            "page_number": 20,
+            "content": "Content from the first PDF, page 20.",
+            "bbox": [],
+        },
+        {
+            "chunk_id": "second-page-20",
+            "document_id": "document-2",
+            "version_id": "version-2",
+            "filename": "second.pdf",
+            "page_number": 20,
+            "content": "Content from the second PDF, page 20.",
+            "bbox": [],
+        },
+    ]
+    captured = {}
+
+    def get_page_chunks(page_number):
+        captured["page_number"] = page_number
+        return page_chunks
+
+    monkeypatch.setattr(
+        rag.sqlite_store,
+        "get_active_chunks_for_page_number",
+        get_page_chunks,
+    )
+
+    def reject_hybrid_search(*args, **kwargs):
+        raise AssertionError(
+            "Page-number queries should not use similarity search."
+        )
+
+    monkeypatch.setattr(rag, "hybrid_search", reject_hybrid_search)
+
+    def answer_from_sources(query, sources):
+        captured["sources"] = sources
+        return {
+            "answer": "The page contents are in the supplied sources.",
+            "citations": ["S1", "S2"],
+            "not_found": False,
+        }
+
+    monkeypatch.setattr(
+        rag,
+        "generate_grounded_answer",
+        answer_from_sources,
+    )
+
+    result = rag.answer_question(query)
+
+    assert captured["page_number"] == 20
+    assert {
+        source["filename"]
+        for source in captured["sources"]
+    } == {"first.pdf", "second.pdf"}
+    assert all(
+        source["page_number"] == 20
+        for source in captured["sources"]
+    )
+    assert result["retrieval_mode"] == "page"
+    assert SearchResponse.model_validate(result).retrieval_mode == "page"
+
+
+def test_page_number_query_returns_not_found_if_no_pdf_has_that_page(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        rag.sqlite_store,
+        "get_active_chunks_for_page_number",
+        lambda page_number: [],
+    )
+
+    def reject_normal_retrieval(*args, **kwargs):
+        raise AssertionError(
+            "Page-number queries should not fall back to similarity search."
+        )
+
+    monkeypatch.setattr(rag, "hybrid_search", reject_normal_retrieval)
+    monkeypatch.setattr(
+        rag,
+        "generate_grounded_answer",
+        reject_normal_retrieval,
+    )
+
+    result = rag.answer_question("What is on page 200?")
+
+    assert result["not_found"] is True
+    assert result["results"] == []
+    assert result["retrieval_mode"] == "page"
+
+
 def test_search_puts_cited_result_first_and_returns_two_related_results(
     monkeypatch,
 ):
