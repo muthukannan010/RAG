@@ -185,7 +185,7 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict]:
             "The uploaded file is not a readable PDF."
         ) from exc
 
-import fitz
+
 
 
 def extract_page_words(page):
@@ -210,7 +210,7 @@ def extract_page_words(page):
 
         # PyMuPDF text coordinates are relative to the
         # unrotated page. Convert them for displayed orientation.
-        rect = fitz.Rect(x0, y0, x1, y1) * page.rotation_matrix
+        rect = pymupdf.Rect(x0, y0, x1, y1) * page.rotation_matrix
 
         extracted_words.append({
             "text": text,
