@@ -10,6 +10,19 @@ from app.services.ingestion import prepare_document
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_DOCUMENT_EXTENSIONS = (
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".txt",
+    ".csv",
+    ".md",
+    ".html",
+    ".json",
+    ".xml",
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -22,8 +35,13 @@ def _safe_filename(filename: str) -> str:
     if not name:
         raise ValueError("The uploaded file needs a filename.")
 
-    if not name.lower().endswith(".pdf"):
-        raise ValueError("Only PDF documents are supported.")
+    extension = Path(name).suffix.lower()
+    if extension not in SUPPORTED_DOCUMENT_EXTENSIONS:
+        supported_formats = ", ".join(SUPPORTED_DOCUMENT_EXTENSIONS)
+        raise ValueError(
+            f"Unsupported document format '{extension or 'unknown'}'. "
+            f"Supported formats: {supported_formats}."
+        )
 
     return name
 
@@ -84,13 +102,21 @@ def _store_version(
 
     # Extract text, create chunks and generate embeddings before
     # activating the new version.
-    prepared = prepare_document(pdf_bytes)
+    prepared = prepare_document(
+        pdf_bytes,
+        filename=filename,
+    )
 
     version_id = str(uuid.uuid4())
 
+    extension = Path(filename).suffix.lower()
+    documents_root = settings.documents_dir.resolve()
     version_directory = (
-        settings.documents_dir / document_id
-    )
+        documents_root / document_id
+    ).resolve()
+
+    if not version_directory.is_relative_to(documents_root):
+        raise ValueError("The document storage path is invalid.")
 
     version_directory.mkdir(
         parents=True,
@@ -98,8 +124,10 @@ def _store_version(
     )
 
     stored_path = (
-        version_directory / f"{version_id}.pdf"
-    )
+        version_directory / f"{version_id}{extension}"
+    ).resolve()
+    if not stored_path.is_relative_to(documents_root):
+        raise ValueError("The document storage path is invalid.")
 
     record = {
         "id": document_id,
@@ -118,7 +146,7 @@ def _store_version(
         "updated_at": _now(),
     }
 
-    # Write to a unique version path. Never overwrite the old PDF
+    # Write to a unique version path. Never overwrite the old document
     # before extraction and embedding generation have succeeded.
     stored_path.write_bytes(pdf_bytes)
 
@@ -189,7 +217,7 @@ def _store_version(
             _remove_file(old_record["stored_path"])
         except OSError:
             logger.exception(
-                "Could not remove the old PDF file for %s.",
+                "Could not remove the old document file for %s.",
                 document_id,
             )
 
@@ -271,13 +299,13 @@ def delete_document(document_id: str) -> dict:
         _remove_file(record["stored_path"])
     except OSError as exc:
         logger.exception(
-            "Could not remove the PDF file for %s.",
+            "Could not remove the document file for %s.",
             document_id,
         )
 
         raise RuntimeError(
             "The document is no longer searchable, but its stored "
-            "PDF could not be removed. Retry deletion."
+            "file could not be removed. Retry deletion."
         ) from exc
 
     sqlite_store.delete_document_record(document_id)

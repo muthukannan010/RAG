@@ -61,7 +61,7 @@ function App() {
     notice,
     clearNotice,
     loadDocuments,
-    uploadPDF,
+    uploadDocument,
     deleteDocument,
   } = documentState;
 
@@ -147,7 +147,7 @@ function App() {
     }
 
     const confirmed = window.confirm(
-      `Replace "${document.filename}" with a new PDF?`
+      `Replace "${document.filename}" with a new document?`
     );
 
     if (!confirmed) {
@@ -164,7 +164,7 @@ function App() {
     const file = event.target.files?.[0];
     const targetId = uploadTargetId;
 
-    // Reset so that the same PDF can be selected again.
+    // Reset so that the same file can be selected again.
     event.target.value = "";
     setUploadTargetId(null);
 
@@ -172,7 +172,7 @@ function App() {
       return;
     }
 
-    uploadPDF(file, targetId);
+    uploadDocument(file, targetId);
   }
 
   function startNewConversation() {
@@ -304,10 +304,10 @@ function App() {
         ref={fileInputRef}
         className="hidden-file-input"
         type="file"
-        accept=".pdf,application/pdf"
+        accept=".pdf,.docx,.pptx,.xlsx,.txt,.csv,.md,.html,.json,.xml"
         onChange={handleFileChange}
         disabled={isBusy}
-        aria-label="Select a PDF document"
+        aria-label="Select a document"
       />
     </div>
   );
