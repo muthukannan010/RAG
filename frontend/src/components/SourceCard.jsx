@@ -3,6 +3,15 @@ import { useState } from "react";
 import HighlightText from "./HighlightText.jsx";
 import Icon from "./Icon.jsx";
 
+function isPdfFilename(filename) {
+  if (typeof filename !== "string") {
+    return false;
+  }
+
+  const basename = filename.replace(/\\/g, "/").split("/").pop() || "";
+  return basename.toLowerCase().endsWith(".pdf");
+}
+
 export default function SourceCard({
   source,
   question,
@@ -21,6 +30,7 @@ export default function SourceCard({
   const hasPage =
     source.page != null &&
     Number.isFinite(Number(source.page));
+  const isPdf = isPdfFilename(source.filename);
 
   return (
     <section className="source-card">
@@ -56,8 +66,12 @@ export default function SourceCard({
             type="button"
             className="source-reference"
             onClick={() => onOpenSource(source)}
-            disabled={!hasPage}
-            title={`Open cited page ${source.page ?? ""}`}
+            disabled={isPdf && !hasPage}
+            title={
+              isPdf
+                ? `Open cited page ${source.page ?? ""}`
+                : "Preview cited passage"
+            }
           >
             [{source.sourceRef}]
           </button>
@@ -68,7 +82,9 @@ export default function SourceCard({
         </span>
 
         {hasPage && (
-          <span>(Page {source.page})</span>
+          <span>
+            ({isPdf ? "Page" : "Section/Index"} {source.page})
+          </span>
         )}
       </div>
 
@@ -141,9 +157,11 @@ export default function SourceCard({
           type="button"
           className="view-page-button"
           onClick={() => onOpenSource(source)}
-          disabled={!hasPage}
+          disabled={isPdf && !hasPage}
         >
-          [ View Page {source.page ?? "—"} ]
+          {isPdf
+            ? `[ View Page ${source.page ?? "—"} ]`
+            : "[ View Passage ]"}
         </button>
       </div>
     </section>

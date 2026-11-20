@@ -29,21 +29,63 @@ router = APIRouter(
     tags=["Documents"],
 )
 
+SUPPORTED_UPLOAD_EXTENSIONS = (
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".txt",
+    ".csv",
+    ".md",
+    ".html",
+    ".json",
+    ".xml",
+)
 
-def _read_pdf_upload(file: UploadFile) -> bytes:
-    filename = file.filename or ""
+DOCUMENT_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": (
+        "application/vnd.openxmlformats-officedocument."
+        "wordprocessingml.document"
+    ),
+    ".pptx": (
+        "application/vnd.openxmlformats-officedocument."
+        "presentationml.presentation"
+    ),
+    ".xlsx": (
+        "application/vnd.openxmlformats-officedocument."
+        "spreadsheetml.sheet"
+    ),
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".xml": "application/xml",
+}
 
-    if not filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=422,
-            detail="Only PDF documents are supported.",
-        )
+
+def _read_document_upload(file: UploadFile) -> bytes:
+    filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    extension = Path(filename).suffix.lower()
 
     # Read at most the permitted size plus one byte.
     # This avoids loading an arbitrarily large request into memory.
     maximum_bytes = settings.max_upload_mb * 1024 * 1024
 
     try:
+        if extension not in SUPPORTED_UPLOAD_EXTENSIONS:
+            supported_formats = ", ".join(
+                SUPPORTED_UPLOAD_EXTENSIONS
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported document format. Supported formats: "
+                    f"{supported_formats}."
+                ),
+            )
+
         content = file.file.read(maximum_bytes + 1)
     finally:
         file.file.close()
@@ -77,7 +119,7 @@ def list_documents():
 def upload_document(
     file: UploadFile = File(...),
 ):
-    content = _read_pdf_upload(file)
+    content = _read_document_upload(file)
 
     try:
         document = document_service.add_document(
@@ -87,7 +129,7 @@ def upload_document(
 
         return {
             "message": (
-                "PDF uploaded and indexed for semantic search."
+                "Document uploaded and indexed for semantic search."
             ),
             "document": document,
         }
@@ -103,7 +145,7 @@ def upload_document(
 
         raise HTTPException(
             status_code=500,
-            detail="The server could not process the uploaded PDF.",
+            detail="The server could not process the uploaded document.",
         ) from exc
 
 
@@ -112,7 +154,7 @@ def replace_document(
     document_id: str,
     file: UploadFile = File(...),
 ):
-    content = _read_pdf_upload(file)
+    content = _read_document_upload(file)
 
     try:
         document = document_service.replace_document(
@@ -198,8 +240,7 @@ def delete_document(document_id: str):
 @router.get("/{document_id}/file")
 def get_document_file(document_id: str):
     """
-    Serve the original PDF through the API so the frontend
-    can open its cited page.
+    Serve the original uploaded document through the API.
     """
 
     record = sqlite_store.get_document(document_id)
@@ -228,14 +269,21 @@ def get_document_file(document_id: str):
     if not path.is_file():
         raise HTTPException(
             status_code=404,
-            detail="The PDF file is no longer available.",
+            detail="The original document file is no longer available.",
         )
+
+    extension = Path(record["filename"]).suffix.lower()
+    media_type = DOCUMENT_MEDIA_TYPES.get(
+        extension,
+        "application/octet-stream",
+    )
 
     return FileResponse(
         path=str(path),
-        media_type="application/pdf",
+        media_type=media_type,
+        filename=record["filename"],
+        content_disposition_type="inline",
         headers={
-            "Content-Disposition": "inline",
             "Cache-Control": "no-store",
         },
     )

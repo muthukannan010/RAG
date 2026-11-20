@@ -18,7 +18,7 @@ function renderAnswer(answer, sources, onOpenSource) {
         type="button"
         className="answer-citation"
         onClick={() => onOpenSource(source)}
-        disabled={source.page == null}
+        disabled={source.isPdf && source.page == null}
       >
         {part}
       </button>

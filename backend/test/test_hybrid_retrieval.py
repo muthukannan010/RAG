@@ -39,12 +39,25 @@ def test_hybrid_search_merges_duplicates_and_ranks_with_weighted_rrf(
     hybrid_settings,
 ):
     keyword_results = [
-        {**_result("shared", "shared passage"), "keyword_score": -2.0},
+        {
+            **_result("shared", "shared passage"),
+            "structural_metadata": [
+                {"element_index": 2, "element_type": "Paragraph"}
+            ],
+            "keyword_score": -2.0,
+        },
         {**_result("keyword-only", "exact phrase"), "keyword_score": -1.0},
     ]
     semantic_results = [
         {**_result("semantic-only", "meaning match"), "semantic_score": 0.8},
-        {**_result("shared", "shared passage"), "semantic_score": 0.7},
+        {
+            **_result("shared", "shared passage"),
+            "structural_metadata": [
+                {"element_index": 2, "element_type": "Paragraph"},
+                {"element_index": 3, "element_type": "Table"},
+            ],
+            "semantic_score": 0.7,
+        },
     ]
     monkeypatch.setattr(
         hybrid_retrieval,
@@ -70,6 +83,10 @@ def test_hybrid_search_merges_duplicates_and_ranks_with_weighted_rrf(
     assert results[0]["semantic_rank"] == 2
     assert results[0]["keyword_score"] == -2.0
     assert results[0]["semantic_score"] == 0.7
+    assert results[0]["structural_metadata"] == [
+        {"element_index": 2, "element_type": "Paragraph"},
+        {"element_index": 3, "element_type": "Table"},
+    ]
     assert results[0]["hybrid_score"] == pytest.approx(
         0.4 / 61 + 0.6 / 62
     )
@@ -128,10 +145,16 @@ def test_hybrid_search_removes_duplicate_text_when_enabled(
     duplicate_candidates = [
         {
             **_result("chunk-1", "Same   passage."),
+            "structural_metadata": [
+                {"element_index": 1, "element_type": "Paragraph"}
+            ],
             "keyword_score": -1.0,
         },
         {
             **_result("chunk-2", "Same passage."),
+            "structural_metadata": [
+                {"element_index": 2, "element_type": "Table"}
+            ],
             "keyword_score": -2.0,
         },
     ]
@@ -152,6 +175,10 @@ def test_hybrid_search_removes_duplicate_text_when_enabled(
     results = hybrid_retrieval.hybrid_search("same passage")
 
     assert [item["chunk_id"] for item in results] == ["chunk-1"]
+    assert results[0]["structural_metadata"] == [
+        {"element_index": 1, "element_type": "Paragraph"},
+        {"element_index": 2, "element_type": "Table"},
+    ]
 
 
 def test_settings_normalize_weights_and_reject_invalid_retrieval_config():

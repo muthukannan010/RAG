@@ -9,3 +9,5 @@ numpy
 pytest
 httpx
 pytesseract
+unstructured[docx,pptx,xlsx]
+Pillow

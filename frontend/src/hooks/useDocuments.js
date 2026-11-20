@@ -20,6 +20,19 @@ import {
 
 import { logError } from "../utils/logger";
 
+const SUPPORTED_DOCUMENT_EXTENSIONS = [
+  ".pdf",
+  ".docx",
+  ".pptx",
+  ".xlsx",
+  ".txt",
+  ".csv",
+  ".md",
+  ".html",
+  ".json",
+  ".xml",
+];
+
 export default function useDocuments() {
   const [documents, setDocuments] = useState([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
@@ -68,7 +81,7 @@ export default function useDocuments() {
     }
   }, []);
 
-  const uploadPDF = useCallback(
+  const uploadDocument = useCallback(
     (file, targetDocumentId = null) => {
       if (operationInProgress.current) {
         return;
@@ -78,13 +91,22 @@ export default function useDocuments() {
         return;
       }
 
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        setNotice("Please select a PDF document.");
+      const extensionIndex = file.name.lastIndexOf(".");
+      const extension =
+        extensionIndex >= 0
+          ? file.name.slice(extensionIndex).toLowerCase()
+          : "";
+      if (!SUPPORTED_DOCUMENT_EXTENSIONS.includes(extension)) {
+        setNotice(
+          "Unsupported document format. Supported formats: " +
+            SUPPORTED_DOCUMENT_EXTENSIONS.join(", ") +
+            "."
+        );
         return;
       }
 
       if (file.size === 0) {
-        setNotice("The selected PDF is empty.");
+        setNotice("The selected document is empty.");
         return;
       }
 
@@ -228,7 +250,7 @@ export default function useDocuments() {
 
       const confirmed = window.confirm(
         `Delete "${document.filename}"?\n\n` +
-          "The backend must remove the PDF and all associated " +
+          "The backend must remove the original file and all associated " +
           "chunks, embeddings and search-index records."
       );
 
@@ -292,7 +314,7 @@ export default function useDocuments() {
     clearNotice,
 
     loadDocuments,
-    uploadPDF,
+    uploadDocument,
     deleteDocument,
   };
 }

@@ -54,7 +54,7 @@ export default function Sidebar({
             <Icon name="file" size={25} />
             <p>No documents uploaded yet.</p>
             <small>
-              Upload a PDF to start searching.
+              Upload a document to start searching.
             </small>
           </div>
         ) : (
@@ -115,7 +115,7 @@ export default function Sidebar({
       {isUploading && (
         <div className="sidebar-upload-progress">
           <div>
-            <span>Uploading PDF</span>
+            <span>Uploading document</span>
             <strong>{uploadProgress}%</strong>
           </div>
 
@@ -143,9 +143,10 @@ export default function Sidebar({
           type="button"
           disabled={isBusy}
           onClick={onUploadClick}
+          title="Supported formats: PDF, DOCX, PPTX, XLSX, TXT, CSV, MD, HTML, JSON, XML"
         >
           <Icon name="upload" size={18} />
-          Upload PDF
+          Upload Document
         </button>
 
         <button

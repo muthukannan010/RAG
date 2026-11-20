@@ -32,8 +32,18 @@ function getViewerFromLocation() {
     page: Number(params.get("page")) || 1,
     sourceRef: params.get("citation"),
     filename: "PDF document",
+    isPdf: true,
     quotedText: null,
   };
+}
+
+function isPdfFilename(filename) {
+  if (typeof filename !== "string") {
+    return false;
+  }
+
+  const basename = filename.replace(/\\/g, "/").split("/").pop() || "";
+  return basename.toLowerCase().endsWith(".pdf");
 }
 
 function App() {
@@ -61,7 +71,7 @@ function App() {
     notice,
     clearNotice,
     loadDocuments,
-    uploadPDF,
+    uploadDocument,
     deleteDocument,
   } = documentState;
 
@@ -147,7 +157,7 @@ function App() {
     }
 
     const confirmed = window.confirm(
-      `Replace "${document.filename}" with a new PDF?`
+      `Replace "${document.filename}" with a new document?`
     );
 
     if (!confirmed) {
@@ -164,7 +174,7 @@ function App() {
     const file = event.target.files?.[0];
     const targetId = uploadTargetId;
 
-    // Reset so that the same PDF can be selected again.
+    // Reset so that the same file can be selected again.
     event.target.value = "";
     setUploadTargetId(null);
 
@@ -172,7 +182,7 @@ function App() {
       return;
     }
 
-    uploadPDF(file, targetId);
+    uploadDocument(file, targetId);
   }
 
   function startNewConversation() {
@@ -191,25 +201,37 @@ function App() {
 
   // Keep the PDF viewer inside this app so chat state remains mounted.
   function openSource(source) {
+    const isPdf = isPdfFilename(source.filename);
     const page = Number(source.page);
+    const hasPage =
+      source.page != null &&
+      Number.isInteger(page) &&
+      page > 0;
+
     if (
       !source.documentId ||
-      !Number.isInteger(page) ||
-      page < 1
+      (isPdf && !hasPage)
     ) {
       setLocalNotice(
-        "This source does not include a valid document and page."
+        isPdf
+          ? "This source does not include a valid document and page."
+          : "This source does not include a valid document ID."
       );
       return;
     }
 
     try {
-      const viewer = { ...source, page };
+      const viewer = {
+        ...source,
+        page: hasPage ? page : null,
+      };
       const url = new URL(
         `/documents/${encodeURIComponent(source.documentId)}/view`,
         window.location.origin
       );
-      url.searchParams.set("page", String(page));
+      if (hasPage) {
+        url.searchParams.set("page", String(page));
+      }
       if (source.sourceRef) {
         url.searchParams.set("citation", source.sourceRef);
       }
@@ -304,10 +326,10 @@ function App() {
         ref={fileInputRef}
         className="hidden-file-input"
         type="file"
-        accept=".pdf,application/pdf"
+        accept=".pdf,.docx,.pptx,.xlsx,.txt,.csv,.md,.html,.json,.xml"
         onChange={handleFileChange}
         disabled={isBusy}
-        aria-label="Select a PDF document"
+        aria-label="Select a document"
       />
     </div>
   );

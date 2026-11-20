@@ -82,6 +82,72 @@ export function extractSearchResults(payload) {
 
 export function normalizeSource(item, index = 0) {
   const metadata = item.metadata ?? {};
+  const structuralMetadata = item.structural_metadata ?? null;
+  const embeddedLocatorMapping =
+    item.locator_mapping ??
+    metadata.locator_mapping ??
+    structuralMetadata?.locator_mapping ??
+    (
+      structuralMetadata &&
+      typeof structuralMetadata === "object" &&
+      !Array.isArray(structuralMetadata) &&
+      (
+        "mapping_status" in structuralMetadata ||
+        "locator_segments" in structuralMetadata
+      )
+        ? structuralMetadata
+        : null
+    );
+  const locatorSegments =
+    item.locator_segments ??
+    item.locatorSegments ??
+    embeddedLocatorMapping?.locator_segments ??
+    structuralMetadata?.locator_segments ??
+    null;
+  const versionId =
+    item.version_id ??
+    item.document_version_id ??
+    item.versionId ??
+    metadata.version_id ??
+    embeddedLocatorMapping?.document_version_id ??
+    structuralMetadata?.document_version_id ??
+    locatorSegments?.[0]?.document_version_id ??
+    null;
+  const locatorMappingStatus =
+    item.locator_mapping_status ??
+    item.locatorMappingStatus ??
+    embeddedLocatorMapping?.mapping_status ??
+    structuralMetadata?.locator_mapping_status ??
+    null;
+  const filename =
+    item.filename ??
+    item.document_name ??
+    item.source ??
+    metadata.filename ??
+    metadata.source ??
+    "Source document";
+  const basename =
+    typeof filename === "string"
+      ? filename.replace(/\\/g, "/").split("/").pop() || ""
+      : "";
+  const isDocx = basename.toLowerCase().endsWith(".docx");
+  const docxLocatorNavigable =
+    isDocx &&
+    versionId != null &&
+    locatorMappingStatus === "resolved" &&
+    Array.isArray(locatorSegments) &&
+    locatorSegments.length > 0 &&
+    locatorSegments.every(
+      (segment) =>
+        segment?.mapping_status === "resolved" &&
+        segment.document_version_id === versionId &&
+        Array.isArray(segment.structural_path) &&
+        segment.structural_path.length > 0 &&
+        Number.isInteger(segment.text_range?.start) &&
+        Number.isInteger(segment.text_range?.end) &&
+        segment.text_range.start >= 0 &&
+        segment.text_range.end > segment.text_range.start
+    );
 
   return {
     displayRank: index + 1,
@@ -98,13 +164,9 @@ export function normalizeSource(item, index = 0) {
       metadata.document_id ??
       null,
 
-    filename:
-      item.filename ??
-      item.document_name ??
-      item.source ??
-      metadata.filename ??
-      metadata.source ??
-      "Source document",
+    filename,
+    isPdf: basename.toLowerCase().endsWith(".pdf"),
+    isDocx,
 
     page:
       item.page_number ??
@@ -174,6 +236,11 @@ export function normalizeSource(item, index = 0) {
       item.quoted_text ??
       item.quotedText ??
       null,
+    versionId,
+    structuralMetadata,
+    locatorMappingStatus,
+    locatorSegments,
+    docxLocatorNavigable,
   };
 }
 

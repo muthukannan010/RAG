@@ -119,6 +119,62 @@ def test_keyword_search_supports_exact_phrase_and_active_versions(
     assert results[0]["version_id"] == "version-1"
 
 
+def test_keyword_search_returns_structural_metadata(keyword_database):
+    provenance = [
+        {
+            "format": "docx",
+            "element_type": "Paragraph",
+            "element_index": 2,
+            "section_path": ["Overview"],
+        }
+    ]
+    _save_version(
+        "version-1",
+        [
+            {
+                "id": "metadata-chunk",
+                "text": "Structural metadata search passage.",
+                "provenance": provenance,
+            }
+        ],
+        filename="sample.docx",
+    )
+
+    results = keyword_search("structural")
+
+    assert results[0]["structural_metadata"] == provenance
+
+
+def test_invalid_sqlite_metadata_does_not_break_keyword_search(
+    keyword_database,
+    caplog,
+):
+    _save_version(
+        "version-1",
+        [
+            {
+                "id": "invalid-metadata-chunk",
+                "text": "Search remains available with invalid metadata.",
+            }
+        ],
+    )
+    with sqlite3.connect(settings.sqlite_db_path) as connection:
+        connection.execute(
+            """
+            UPDATE chunks
+            SET structural_metadata_json = ?
+            WHERE id = ?
+            """,
+            ("{invalid-json", "invalid-metadata-chunk"),
+        )
+
+    results = keyword_search("available")
+
+    assert len(results) == 1
+    assert results[0]["structural_metadata"] is None
+    assert "invalid structural metadata JSON" in caplog.text
+
+
 def test_keyword_index_tracks_replacement_and_deletion(
     keyword_database,
 ):
@@ -189,6 +245,24 @@ def test_initialize_backfills_existing_chunk_rows(tmp_path, monkeypatch):
 
     sqlite_store.initialize_database()
 
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(chunks)"
+            )
+        }
+        stored_metadata = connection.execute(
+            """
+            SELECT structural_metadata_json
+            FROM chunks
+            WHERE id = 'chunk-1'
+            """
+        ).fetchone()[0]
+
+    assert "structural_metadata_json" in columns
+    assert stored_metadata is None
+    assert sqlite_store.get_document("document-1")["filename"] == "sample.pdf"
     assert [
         result["chunk_id"]
         for result in keyword_search("preexisting")

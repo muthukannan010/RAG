@@ -54,6 +54,49 @@ def _requested_page_number(query: str) -> int | None:
     return None
 
 
+def _locator_source_fields(item: dict) -> dict:
+    """Expose locator metadata without rewriting the stored metadata object."""
+    structural_metadata = item.get("structural_metadata")
+    locator_mapping = item.get("locator_mapping")
+
+    if locator_mapping is None and isinstance(structural_metadata, dict):
+        locator_mapping = structural_metadata.get("locator_mapping")
+        if locator_mapping is None and (
+            "mapping_status" in structural_metadata
+            or "locator_segments" in structural_metadata
+        ):
+            locator_mapping = structural_metadata
+
+    if not isinstance(locator_mapping, dict):
+        locator_mapping = {}
+
+    locator_segments = item.get("locator_segments")
+    if locator_segments is None:
+        locator_segments = locator_mapping.get("locator_segments")
+
+    version_id = (
+        item.get("version_id")
+        or locator_mapping.get("document_version_id")
+    )
+    if (
+        version_id is None
+        and isinstance(locator_segments, list)
+        and locator_segments
+    ):
+        first_segment = locator_segments[0]
+        if isinstance(first_segment, dict):
+            version_id = first_segment.get("document_version_id")
+
+    return {
+        "version_id": version_id,
+        "locator_mapping_status": (
+            item.get("locator_mapping_status")
+            or locator_mapping.get("mapping_status")
+        ),
+        "locator_segments": locator_segments,
+    }
+
+
 def _is_document_overview_query(query: str) -> bool:
     return any(
         pattern.search(query)
@@ -159,6 +202,8 @@ def _prepare_context(
 
         display_source = {
             **item,
+            "structural_metadata": item.get("structural_metadata"),
+            **_locator_source_fields(item),
             "source_ref": source_ref,
         }
 
