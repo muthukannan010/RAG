@@ -42,6 +42,28 @@ SUPPORTED_UPLOAD_EXTENSIONS = (
     ".xml",
 )
 
+DOCUMENT_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": (
+        "application/vnd.openxmlformats-officedocument."
+        "wordprocessingml.document"
+    ),
+    ".pptx": (
+        "application/vnd.openxmlformats-officedocument."
+        "presentationml.presentation"
+    ),
+    ".xlsx": (
+        "application/vnd.openxmlformats-officedocument."
+        "spreadsheetml.sheet"
+    ),
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".xml": "application/xml",
+}
+
 
 def _read_document_upload(file: UploadFile) -> bytes:
     filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
@@ -218,8 +240,7 @@ def delete_document(document_id: str):
 @router.get("/{document_id}/file")
 def get_document_file(document_id: str):
     """
-    Serve the original PDF through the API so the frontend
-    can open its cited page.
+    Serve the original uploaded document through the API.
     """
 
     record = sqlite_store.get_document(document_id)
@@ -248,14 +269,21 @@ def get_document_file(document_id: str):
     if not path.is_file():
         raise HTTPException(
             status_code=404,
-            detail="The PDF file is no longer available.",
+            detail="The original document file is no longer available.",
         )
+
+    extension = Path(record["filename"]).suffix.lower()
+    media_type = DOCUMENT_MEDIA_TYPES.get(
+        extension,
+        "application/octet-stream",
+    )
 
     return FileResponse(
         path=str(path),
-        media_type="application/pdf",
+        media_type=media_type,
+        filename=record["filename"],
+        content_disposition_type="inline",
         headers={
-            "Content-Disposition": "inline",
             "Cache-Control": "no-store",
         },
     )

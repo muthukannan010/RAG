@@ -294,7 +294,13 @@ def test_semantic_search_still_filters_by_cosine_similarity(
     monkeypatch,
 ):
     candidates = [
-        {"chunk_id": "relevant", "semantic_score": 0.8},
+        {
+            "chunk_id": "relevant",
+            "semantic_score": 0.8,
+            "structural_metadata": [
+                {"format": "docx", "element_type": "Title"}
+            ],
+        },
         {"chunk_id": "weak", "semantic_score": 0.2},
     ]
     monkeypatch.setattr(
@@ -322,6 +328,216 @@ def test_semantic_search_still_filters_by_cosine_similarity(
 
     assert [item["chunk_id"] for item in results] == ["relevant"]
     assert results[0]["relevance_score"] == 0.8
+    assert results[0]["structural_metadata"] == [
+        {"format": "docx", "element_type": "Title"}
+    ]
+
+
+def test_rag_preserves_metadata_in_display_sources_not_llm_context(
+    monkeypatch,
+):
+    provenance = [
+        {
+            "format": "docx",
+            "element_type": "Paragraph",
+            "element_index": 1,
+            "section_path": ["Overview"],
+        }
+    ]
+    retrieved = [
+        {
+            "chunk_id": "docx-chunk",
+            "document_id": "document-1",
+            "version_id": "version-1",
+            "filename": "sample.docx",
+            "page_number": 1,
+            "content": "A passage with structural metadata.",
+            "bbox": [],
+            "structural_metadata": provenance,
+            "locator_mapping": {
+                "document_version_id": "version-1",
+                "mapping_status": "resolved",
+                "locator_segments": [
+                    {
+                        "document_version_id": "version-1",
+                        "element_type": "paragraph",
+                        "structural_path": [
+                            {"kind": "paragraph", "index": 0}
+                        ],
+                        "paragraph_index": 0,
+                        "text_range": {"start": 0, "end": 4},
+                        "mapping_status": "resolved",
+                    }
+                ],
+            },
+        }
+    ]
+    captured = {}
+    monkeypatch.setattr(
+        rag,
+        "hybrid_search",
+        lambda query, top_k: retrieved,
+    )
+
+    def answer_from_sources(query, sources):
+        captured["sources"] = sources
+        return {
+            "answer": "The passage is relevant.",
+            "citations": ["S1"],
+            "not_found": False,
+        }
+
+    monkeypatch.setattr(
+        rag,
+        "generate_grounded_answer",
+        answer_from_sources,
+    )
+
+    result = rag.answer_question("What does the passage say?")
+
+    assert result["results"][0]["structural_metadata"] == provenance
+    assert result["results"][0]["version_id"] == "version-1"
+    assert result["results"][0]["locator_mapping_status"] == "resolved"
+    assert result["results"][0]["locator_segments"][0]["text_range"] == {
+        "start": 0,
+        "end": 4,
+    }
+    assert "structural_metadata" not in captured["sources"][0]
+
+
+@pytest.mark.parametrize(
+    "filename,structural_metadata",
+    [
+        (
+            "sample.docx",
+            [{"format": "docx", "element_type": "Title"}],
+        ),
+        ("sample.pdf", None),
+    ],
+)
+def test_search_api_serializes_optional_structural_metadata(
+    client,
+    monkeypatch,
+    filename,
+    structural_metadata,
+):
+    from app.api.routes import search as search_route
+
+    result = {
+        "query": "test query",
+        "answer": "A grounded answer.",
+        "citations": ["S1"],
+        "not_found": False,
+        "retrieval_mode": "hybrid",
+        "results": [
+            {
+                "source_ref": "S1",
+                "chunk_id": "chunk-1",
+                "document_id": "document-1",
+                "filename": filename,
+                "page_number": 1,
+                "content": "A cited passage.",
+                "bbox": [],
+                "structural_metadata": structural_metadata,
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        search_route,
+        "answer_question",
+        lambda **kwargs: result,
+    )
+
+    response = client.post(
+        "/api/v1/search",
+        json={"query": "test query"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["structural_metadata"] == (
+        structural_metadata
+    )
+
+
+@pytest.mark.parametrize(
+    "mapping_status,segments",
+    [
+        (
+            "resolved",
+            [
+                {
+                    "document_version_id": "version-1",
+                    "element_type": "paragraph",
+                    "structural_path": [
+                        {"kind": "paragraph", "index": 0}
+                    ],
+                    "paragraph_index": 0,
+                    "text_range": {"start": 0, "end": 15},
+                    "mapping_status": "resolved",
+                }
+            ],
+        ),
+        ("ambiguous", []),
+        ("unresolved", []),
+    ],
+)
+def test_search_api_serializes_docx_locator_fields(
+    client,
+    monkeypatch,
+    mapping_status,
+    segments,
+):
+    from app.api.routes import search as search_route
+
+    result = {
+        "query": "test query",
+        "answer": "A grounded answer.",
+        "citations": ["S1"],
+        "not_found": False,
+        "retrieval_mode": "hybrid",
+        "results": [
+            {
+                "source_ref": "S1",
+                "chunk_id": "chunk-1",
+                "document_id": "document-1",
+                "version_id": "version-1",
+                "filename": "sample.docx",
+                "page_number": 1,
+                "content": "A cited passage.",
+                "bbox": [],
+                "structural_metadata": [
+                    {"format": "docx", "element_type": "Paragraph"}
+                ],
+                "locator_mapping_status": mapping_status,
+                "locator_segments": segments,
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        search_route,
+        "answer_question",
+        lambda **kwargs: result,
+    )
+
+    response = client.post(
+        "/api/v1/search",
+        json={"query": "test query"},
+    )
+
+    assert response.status_code == 200
+    source = response.json()["results"][0]
+    assert source["version_id"] == "version-1"
+    assert source["locator_mapping_status"] == mapping_status
+    if mapping_status == "resolved":
+        segment = source["locator_segments"][0]
+        assert segment["document_version_id"] == "version-1"
+        assert segment["structural_path"] == [
+            {"kind": "paragraph", "index": 0}
+        ]
+        assert segment["text_range"] == {"start": 0, "end": 15}
+        assert segment["mapping_status"] == "resolved"
+    else:
+        assert source["locator_segments"] == []
 
 
 def test_document_overview_uses_representative_chunks(

@@ -59,22 +59,29 @@ def upsert_chunks(
         )
 
     collection = get_collection()
+    metadatas = []
+    for chunk in chunks:
+        metadata = {
+            "document_id": document_id,
+            "version_id": version_id,
+            "filename": filename,
+            "page_number": int(chunk["page_number"]),
+            "chunk_index": int(chunk["chunk_index"]),
+            "bbox_json": json.dumps(chunk["bbox"]),
+        }
+        structural_metadata = chunk.get("provenance")
+        if structural_metadata is not None:
+            metadata["structural_metadata_json"] = json.dumps(
+                structural_metadata,
+                ensure_ascii=False,
+            )
+        metadatas.append(metadata)
 
     collection.upsert(
         ids=[chunk["id"] for chunk in chunks],
         embeddings=embeddings.tolist(),
         documents=[chunk["text"] for chunk in chunks],
-        metadatas=[
-            {
-                "document_id": document_id,
-                "version_id": version_id,
-                "filename": filename,
-                "page_number": int(chunk["page_number"]),
-                "chunk_index": int(chunk["chunk_index"]),
-                "bbox_json": json.dumps(chunk["bbox"]),
-            }
-            for chunk in chunks
-        ],
+        metadatas=metadatas,
     )
 
     logger.info(
@@ -154,6 +161,23 @@ def query_chunks(
         except (TypeError, ValueError):
             bounding_boxes = []
 
+        structural_metadata_json = metadata.get(
+            "structural_metadata_json"
+        )
+        try:
+            structural_metadata = (
+                json.loads(structural_metadata_json)
+                if structural_metadata_json is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            logger.warning(
+                "Ignoring invalid structural metadata JSON for chunk %s.",
+                chunk_id,
+                exc_info=True,
+            )
+            structural_metadata = None
+
         output.append(
             {
                 "chunk_id": chunk_id,
@@ -164,6 +188,7 @@ def query_chunks(
                 "content": text,
                 "semantic_score": similarity,
                 "bbox": bounding_boxes,
+                "structural_metadata": structural_metadata,
             }
         )
 

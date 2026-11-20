@@ -1,9 +1,13 @@
+import logging
 import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
 from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def _connect():
@@ -73,6 +77,7 @@ def initialize_database() -> None:
                 page_number INTEGER NOT NULL,
                 text TEXT NOT NULL,
                 bbox_json TEXT NOT NULL,
+                structural_metadata_json TEXT,
                 FOREIGN KEY(document_id)
                     REFERENCES documents(id)
                     ON DELETE CASCADE
@@ -119,6 +124,20 @@ def initialize_database() -> None:
             """
         )
 
+        chunk_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(chunks)"
+            ).fetchall()
+        }
+        if "structural_metadata_json" not in chunk_columns:
+            connection.execute(
+                """
+                ALTER TABLE chunks
+                ADD COLUMN structural_metadata_json TEXT
+                """
+            )
+
         if not fts_exists:
             connection.execute(
                 "INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')"
@@ -136,6 +155,20 @@ def rebuild_keyword_index() -> None:
 
 def _row_to_dict(row):
     return dict(row) if row is not None else None
+
+
+def _decode_structural_metadata(value):
+    if value is None:
+        return None
+
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Ignoring invalid structural metadata JSON from SQLite.",
+            exc_info=True,
+        )
+        return None
 
 
 def get_document(document_id: str):
@@ -185,7 +218,8 @@ def get_active_document_chunks() -> list[dict]:
                 documents.filename,
                 chunks.page_number,
                 chunks.text AS content,
-                chunks.bbox_json
+                chunks.bbox_json,
+                chunks.structural_metadata_json
             FROM chunks
             JOIN documents
                 ON documents.id = chunks.document_id
@@ -199,6 +233,9 @@ def get_active_document_chunks() -> list[dict]:
         {
             **dict(row),
             "bbox": json.loads(row["bbox_json"]),
+            "structural_metadata": _decode_structural_metadata(
+                row["structural_metadata_json"]
+            ),
         }
         for row in rows
     ]
@@ -213,7 +250,8 @@ def get_active_chunks_for_page(
             """
             SELECT
                 chunks.id AS chunk_id,
-                chunks.text AS content
+                chunks.text AS content,
+                chunks.structural_metadata_json
             FROM chunks
             JOIN documents
                 ON documents.id = chunks.document_id
@@ -226,7 +264,15 @@ def get_active_chunks_for_page(
             (document_id, page_number),
         ).fetchall()
 
-    return [dict(row) for row in rows]
+    return [
+        {
+            **dict(row),
+            "structural_metadata": _decode_structural_metadata(
+                row["structural_metadata_json"]
+            ),
+        }
+        for row in rows
+    ]
 
 
 def get_active_chunks_for_page_number(
@@ -242,7 +288,8 @@ def get_active_chunks_for_page_number(
                 documents.filename,
                 chunks.page_number,
                 chunks.text AS content,
-                chunks.bbox_json
+                chunks.bbox_json,
+                chunks.structural_metadata_json
             FROM chunks
             JOIN documents
                 ON documents.id = chunks.document_id
@@ -261,6 +308,9 @@ def get_active_chunks_for_page_number(
         {
             **dict(row),
             "bbox": json.loads(row["bbox_json"]),
+            "structural_metadata": _decode_structural_metadata(
+                row["structural_metadata_json"]
+            ),
         }
         for row in rows
     ]
@@ -281,6 +331,7 @@ def search_active_chunks(
                 chunks.page_number,
                 chunks.text AS content,
                 chunks.bbox_json,
+                chunks.structural_metadata_json,
                 bm25(chunks_fts) AS keyword_score
             FROM chunks_fts
             JOIN chunks
@@ -305,6 +356,9 @@ def search_active_chunks(
             "page_number": row["page_number"],
             "content": row["content"],
             "bbox": json.loads(row["bbox_json"]),
+            "structural_metadata": _decode_structural_metadata(
+                row["structural_metadata_json"]
+            ),
             "keyword_score": row["keyword_score"],
         }
         for row in rows
@@ -404,9 +458,10 @@ def save_document_version(document_record, chunks):
                 chunk_index,
                 page_number,
                 text,
-                bbox_json
+                bbox_json,
+                structural_metadata_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -417,6 +472,14 @@ def save_document_version(document_record, chunks):
                     chunk["page_number"],
                     chunk["text"],
                     json.dumps(chunk["bbox"]),
+                    (
+                        json.dumps(
+                            chunk["provenance"],
+                            ensure_ascii=False,
+                        )
+                        if chunk.get("provenance") is not None
+                        else None
+                    ),
                 )
                 for chunk in chunks
             ],

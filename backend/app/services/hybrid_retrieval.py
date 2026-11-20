@@ -10,6 +10,34 @@ from app.services.retrieval import semantic_search
 logger = logging.getLogger(__name__)
 
 
+def _merge_structural_metadata(existing, incoming):
+    if existing is None:
+        return incoming
+    if incoming is None or existing == incoming:
+        return existing
+
+    if isinstance(existing, dict) and isinstance(incoming, dict):
+        merged = dict(existing)
+        for key, value in incoming.items():
+            if key in merged:
+                merged[key] = _merge_structural_metadata(
+                    merged[key],
+                    value,
+                )
+            else:
+                merged[key] = value
+        return merged
+
+    if isinstance(existing, list) and isinstance(incoming, list):
+        merged = list(existing)
+        for value in incoming:
+            if value not in merged:
+                merged.append(value)
+        return merged
+
+    return existing
+
+
 def hybrid_search(
     query: str,
     top_k: int | None = None,
@@ -105,7 +133,25 @@ def hybrid_search(
             semantic_ranks[chunk_id] = rank
         if chunk_id in merged:
             if rank == semantic_ranks[chunk_id]:
-                merged[chunk_id].update(result)
+                merged_result = merged[chunk_id]
+                existing_metadata = merged_result.get(
+                    "structural_metadata"
+                )
+                semantic_metadata = result.get(
+                    "structural_metadata"
+                )
+                has_metadata = (
+                    "structural_metadata" in merged_result
+                    or "structural_metadata" in result
+                )
+                merged_result.update(result)
+                if has_metadata:
+                    merged_result["structural_metadata"] = (
+                        _merge_structural_metadata(
+                            existing_metadata,
+                            semantic_metadata,
+                        )
+                    )
         else:
             merged[chunk_id] = dict(result)
 
@@ -145,7 +191,7 @@ def hybrid_search(
 
     merged_count = len(ranked_results)
     if settings.remove_duplicate_chunks:
-        seen_content = set()
+        seen_content = {}
         unique_results = []
         for result in ranked_results:
             normalized_text = " ".join(
@@ -161,8 +207,19 @@ def hybrid_search(
                 normalized_text,
             )
             if content_key in seen_content:
+                retained = seen_content[content_key]
+                if (
+                    "structural_metadata" in retained
+                    or "structural_metadata" in result
+                ):
+                    retained["structural_metadata"] = (
+                        _merge_structural_metadata(
+                            retained.get("structural_metadata"),
+                            result.get("structural_metadata"),
+                        )
+                    )
                 continue
-            seen_content.add(content_key)
+            seen_content[content_key] = result
             unique_results.append(result)
         ranked_results = unique_results
 

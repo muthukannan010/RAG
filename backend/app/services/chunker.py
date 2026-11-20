@@ -9,8 +9,8 @@ SENTENCE_BOUNDARIES = (".", "?", "!", "\n", ";")
 
 def _build_page_text(blocks):
     """
-    Combine blocks into one page string while tracking the
-    original coordinate range of every block.
+    Combine blocks into one page string while tracking each block's
+    coordinate range and optional source metadata.
     """
 
     pieces = []
@@ -31,13 +31,14 @@ def _build_page_text(blocks):
         pieces.append(text)
         cursor += len(text)
 
-        ranges.append(
-            {
-                "start": start,
-                "end": cursor,
-                "bbox": block["bbox"],
-            }
-        )
+        block_range = {
+            "start": start,
+            "end": cursor,
+            "bbox": block["bbox"],
+        }
+        if "metadata" in block:
+            block_range["metadata"] = block["metadata"]
+        ranges.append(block_range)
 
     return "".join(pieces), ranges
 
@@ -78,10 +79,11 @@ def chunk_pages(
     chunk_overlap=None,
 ):
     """
-    Split extracted PDF text into page-aware overlapping chunks.
+    Split extracted text into page-aware overlapping chunks.
 
     Each returned chunk includes a stable ID, page number,
-    text, chunk index, and relevant bounding boxes.
+    text, chunk index, relevant bounding boxes, and provenance
+    for any source blocks that provide metadata.
     """
 
     size = chunk_size or settings.chunk_size_chars
@@ -138,15 +140,43 @@ def chunk_pages(
                     )
                 ]
 
-                output.append(
-                    {
-                        "id": str(uuid.uuid4()),
-                        "chunk_index": global_chunk_index,
-                        "page_number": page_number,
-                        "text": text,
-                        "bbox": boxes,
-                    }
+                chunk = {
+                    "id": str(uuid.uuid4()),
+                    "chunk_index": global_chunk_index,
+                    "page_number": page_number,
+                    "text": text,
+                    "bbox": boxes,
+                }
+
+                raw_chunk_text = page_text[start:end]
+                content_start = (
+                    start
+                    + len(raw_chunk_text)
+                    - len(raw_chunk_text.lstrip())
                 )
+                content_end = start + len(raw_chunk_text.rstrip())
+                provenance = []
+                for entry in block_ranges:
+                    metadata = entry.get("metadata")
+                    if not isinstance(metadata, dict):
+                        continue
+
+                    source_start = max(content_start, entry["start"])
+                    source_end = min(content_end, entry["end"])
+                    if source_start >= source_end:
+                        continue
+
+                    source = dict(metadata)
+                    source["text_range"] = {
+                        "start": source_start - entry["start"],
+                        "end": source_end - entry["start"],
+                    }
+                    provenance.append(source)
+
+                if provenance:
+                    chunk["provenance"] = provenance
+
+                output.append(chunk)
 
                 global_chunk_index += 1
 

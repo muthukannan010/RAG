@@ -110,11 +110,131 @@ def _page_number(metadata) -> int | None:
     return number if number > 0 else None
 
 
+def _docx_element_metadata(
+    elements,
+    filename: str,
+) -> dict[int, dict[str, Any]]:
+    records = []
+    records_by_id = {}
+    next_table_index = 0
+
+    for element_index, element in enumerate(elements):
+        metadata = getattr(element, "metadata", None)
+        category = str(
+            getattr(element, "category", type(element).__name__)
+        )
+        element_id = getattr(element, "id", None)
+        parent_id = getattr(metadata, "parent_id", None)
+        original_text = str(getattr(element, "text", "") or "")
+        is_heading = category.lower() in {"title", "header"}
+        try:
+            category_depth = int(
+                getattr(metadata, "category_depth", None)
+            )
+        except (TypeError, ValueError):
+            category_depth = None
+
+        is_table = category.lower() == "table"
+        record = {
+            "element_index": element_index,
+            "element_id": (
+                str(element_id) if element_id is not None else None
+            ),
+            "parent_id": (
+                str(parent_id) if parent_id is not None else None
+            ),
+            "category": category,
+            "text": _element_text(element),
+            "original_text": original_text,
+            "is_heading": is_heading,
+            "is_table": is_table,
+            "table_index": next_table_index if is_table else None,
+            "category_depth": (
+                max(0, category_depth)
+                if category_depth is not None
+                else None
+            ),
+            "metadata": metadata,
+        }
+        records.append(record)
+
+        if record["element_id"]:
+            records_by_id[record["element_id"]] = record
+        if is_table:
+            next_table_index += 1
+
+    heading_stack = []
+    output = {}
+
+    for record in records:
+        text = record["text"]
+        if not text:
+            continue
+
+        if record["is_heading"]:
+            depth = record["category_depth"]
+            if depth is None:
+                heading_stack = [text]
+            else:
+                heading_stack = heading_stack[:depth]
+                heading_stack.append(text)
+
+        current_id = (
+            record["element_id"]
+            if record["is_heading"]
+            else record["parent_id"]
+        )
+        ancestors = []
+        visited_ids = set()
+        while current_id and current_id not in visited_ids:
+            visited_ids.add(current_id)
+            ancestor = records_by_id.get(current_id)
+            if ancestor is None:
+                break
+            if ancestor["is_heading"] and ancestor["text"]:
+                ancestors.append(ancestor["text"])
+            current_id = ancestor["parent_id"]
+        ancestors.reverse()
+        section_path = ancestors or list(heading_stack)
+
+        element_metadata = {
+            "filename": filename,
+            "format": "docx",
+            "element_type": record["category"],
+            "element_index": record["element_index"],
+            "element_id": record["element_id"],
+            "parent_id": record["parent_id"],
+            "section_path": section_path,
+            "original_text": record["original_text"],
+        }
+
+        if record["is_heading"] and record["category_depth"] is not None:
+            element_metadata["heading_level"] = (
+                record["category_depth"] + 1
+            )
+
+        if record["is_table"]:
+            element_metadata["table_index"] = record["table_index"]
+            element_metadata["table_position"] = record["element_index"]
+            table_html = getattr(record["metadata"], "text_as_html", None)
+            if table_html:
+                element_metadata["table_html"] = str(table_html)
+
+        output[record["element_index"]] = element_metadata
+
+    return output
+
+
 def _normalize_unstructured_elements(
     elements,
     filename: str,
     extension: str,
 ) -> list[dict[str, Any]]:
+    docx_metadata = (
+        _docx_element_metadata(elements, filename)
+        if extension == ".docx"
+        else None
+    )
     title_by_id = {}
     for element in elements:
         category = str(
@@ -133,7 +253,7 @@ def _normalize_unstructured_elements(
     pages = []
     current_section = None
 
-    for element in elements:
+    for element_index, element in enumerate(elements):
         metadata = getattr(element, "metadata", None)
         category = str(
             getattr(element, "category", type(element).__name__)
@@ -174,6 +294,16 @@ def _normalize_unstructured_elements(
             pages.append(page)
         else:
             page = pages_by_key[page_key]
+
+        if docx_metadata is not None:
+            page["blocks"].append(
+                {
+                    "text": text,
+                    "bbox": [],
+                    "metadata": docx_metadata[element_index],
+                }
+            )
+            continue
 
         context = [
             f"Source: {filename}",

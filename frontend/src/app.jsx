@@ -32,8 +32,18 @@ function getViewerFromLocation() {
     page: Number(params.get("page")) || 1,
     sourceRef: params.get("citation"),
     filename: "PDF document",
+    isPdf: true,
     quotedText: null,
   };
+}
+
+function isPdfFilename(filename) {
+  if (typeof filename !== "string") {
+    return false;
+  }
+
+  const basename = filename.replace(/\\/g, "/").split("/").pop() || "";
+  return basename.toLowerCase().endsWith(".pdf");
 }
 
 function App() {
@@ -191,25 +201,37 @@ function App() {
 
   // Keep the PDF viewer inside this app so chat state remains mounted.
   function openSource(source) {
+    const isPdf = isPdfFilename(source.filename);
     const page = Number(source.page);
+    const hasPage =
+      source.page != null &&
+      Number.isInteger(page) &&
+      page > 0;
+
     if (
       !source.documentId ||
-      !Number.isInteger(page) ||
-      page < 1
+      (isPdf && !hasPage)
     ) {
       setLocalNotice(
-        "This source does not include a valid document and page."
+        isPdf
+          ? "This source does not include a valid document and page."
+          : "This source does not include a valid document ID."
       );
       return;
     }
 
     try {
-      const viewer = { ...source, page };
+      const viewer = {
+        ...source,
+        page: hasPage ? page : null,
+      };
       const url = new URL(
         `/documents/${encodeURIComponent(source.documentId)}/view`,
         window.location.origin
       );
-      url.searchParams.set("page", String(page));
+      if (hasPage) {
+        url.searchParams.set("page", String(page));
+      }
       if (source.sourceRef) {
         url.searchParams.set("citation", source.sourceRef);
       }

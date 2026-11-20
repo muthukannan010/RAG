@@ -10,7 +10,19 @@ function getErrorMessage(payload, fallback) {
   return fallback;
 }
 
+function isPdfFilename(filename) {
+  if (typeof filename !== "string") {
+    return false;
+  }
+
+  const basename = filename.replace(/\\/g, "/").split("/").pop() || "";
+  return basename.toLowerCase().endsWith(".pdf");
+}
+
 export default function PDFViewer({ source, onBack }) {
+  const filename =
+    typeof source?.filename === "string" ? source.filename : "";
+  const isPdf = source?.isPdf === true || isPdfFilename(filename);
   const firstPage = Number(source.page);
   const [page, setPage] = useState(
     Number.isInteger(firstPage) && firstPage > 0 ? firstPage : 1
@@ -25,6 +37,10 @@ export default function PDFViewer({ source, onBack }) {
   const scrollRef = useRef(null);
 
   useEffect(() => {
+    if (!isPdf) {
+      return undefined;
+    }
+
     const controller = new AbortController();
     let imageUrl = null;
     const quotedText =
@@ -115,7 +131,61 @@ export default function PDFViewer({ source, onBack }) {
         URL.revokeObjectURL(imageUrl);
       }
     };
-  }, [page, source.documentId, source.page, source.quotedText]);
+  }, [isPdf, page, source.documentId, source.page, source.quotedText]);
+
+  if (!isPdf) {
+    const hasSectionIndex =
+      source.page != null &&
+      Number.isFinite(Number(source.page));
+    const passageText =
+      typeof source.text === "string" ? source.text.trim() : "";
+
+    return (
+      <main className="pdf-viewer">
+        <div className="pdf-viewer-toolbar">
+          <button
+            type="button"
+            className="pdf-back-button"
+            onClick={onBack}
+          >
+            ← Back to Chat
+          </button>
+
+          <div className="pdf-document-title">
+            <strong>{filename || "Document"}</strong>
+            <span>
+              {source.sourceRef
+                ? `Citation [${source.sourceRef}] · `
+                : ""}
+              Passage Preview
+            </span>
+          </div>
+
+          {hasSectionIndex && (
+            <span className="pdf-page-count">
+              Section/Index {source.page}
+            </span>
+          )}
+        </div>
+
+        <div className="pdf-page-scroll" ref={scrollRef}>
+          <article className="source-snippet">
+            <strong>Retrieved Content</strong>
+            <div
+              style={{
+                marginTop: 8,
+                overflowWrap: "anywhere",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {passageText ||
+                "No retrieved passage text is available."}
+            </div>
+          </article>
+        </div>
+      </main>
+    );
+  }
 
   function changeZoom(amount) {
     setZoom((current) =>
