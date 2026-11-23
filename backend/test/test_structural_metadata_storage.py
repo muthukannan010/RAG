@@ -39,6 +39,31 @@ def _chunk(chunk_id="chunk-1", provenance=None):
     return chunk
 
 
+def _locator_metadata_record(version_id):
+    return {
+        "metadata_type": "docx_locator_mapping",
+        "locator_mapping": {
+            "chunk_id": "chunk-1",
+            "document_version_id": version_id,
+            "mapping_status": "resolved",
+            "locator_segments": [
+                {
+                    "document_version_id": version_id,
+                    "element_type": "paragraph",
+                    "structural_path": [
+                        {"kind": "paragraph", "index": 0}
+                    ],
+                    "paragraph_index": 0,
+                    "text_range": {"start": 0, "end": 10},
+                    "section_path": ["Overview"],
+                    "mapping_status": "resolved",
+                }
+            ],
+            "diagnostics": [],
+        },
+    }
+
+
 def test_new_database_has_structural_metadata_column(
     tmp_path,
     monkeypatch,
@@ -89,6 +114,7 @@ def test_sqlite_round_trips_docx_structural_metadata(
             "text_range": {"start": 0, "end": 39},
         },
     ]
+    provenance.append(_locator_metadata_record("version-1"))
     sqlite_store.save_document_version(
         _document_record(),
         [_chunk(provenance=provenance)],
@@ -102,6 +128,13 @@ def test_sqlite_round_trips_docx_structural_metadata(
         5,
     )
     assert keyword_chunks[0]["structural_metadata"] == provenance
+    persisted_mapping = keyword_chunks[0]["structural_metadata"][-1][
+        "locator_mapping"
+    ]
+    assert persisted_mapping["document_version_id"] == "version-1"
+    assert persisted_mapping["locator_segments"][0][
+        "document_version_id"
+    ] == "version-1"
 
     with sqlite3.connect(settings.sqlite_db_path) as connection:
         saved_json = connection.execute(
@@ -124,7 +157,10 @@ def test_sqlite_metadata_is_optional_and_replacement_deletes_old_chunks(
         tmp_path / "replacement.sqlite3",
     )
     sqlite_store.initialize_database()
-    old_provenance = [{"element_type": "Title"}]
+    old_provenance = [
+        {"element_type": "Title"},
+        _locator_metadata_record("version-1"),
+    ]
     sqlite_store.save_document_version(
         _document_record(),
         [_chunk(provenance=old_provenance)],
@@ -139,6 +175,10 @@ def test_sqlite_metadata_is_optional_and_replacement_deletes_old_chunks(
     active_chunks = sqlite_store.get_active_document_chunks()
     assert [item["chunk_id"] for item in active_chunks] == ["chunk-2"]
     assert active_chunks[0]["structural_metadata"] is None
+    assert sqlite_store.search_active_chunks(
+        '"Structural"',
+        5,
+    )[0]["structural_metadata"] is None
 
     sqlite_store.mark_document_deleting("doc-1")
     sqlite_store.delete_document_record("doc-1")
@@ -162,7 +202,8 @@ def test_chroma_round_trips_metadata_and_keeps_pdf_metadata_optional(
             "table_index": 0,
             "section_path": ["Details"],
             "text_range": {"start": 0, "end": 15},
-        }
+        },
+        _locator_metadata_record("docx-version"),
     ]
     chunks = [
         _chunk("docx-chunk", provenance),
@@ -198,6 +239,16 @@ def test_chroma_round_trips_metadata_and_keeps_pdf_metadata_optional(
 
     assert results_by_id["docx-chunk"]["structural_metadata"] == provenance
     assert results_by_id["pdf-chunk"]["structural_metadata"] is None
+
+    vector_store._client = None
+    vector_store._collection = None
+    vector_store._collection_path = None
+    reopened_results = vector_store.query_chunks(
+        query_embedding=embeddings[0],
+        active_version_ids=["docx-version"],
+        top_k=1,
+    )
+    assert reopened_results[0]["structural_metadata"] == provenance
 
     stored = vector_store.get_collection().get(
         ids=["docx-chunk", "pdf-chunk"],

@@ -1,4 +1,8 @@
-const env = import.meta.env;
+const env = import.meta.env || {};
+const documentFileEndpoint =
+  env.VITE_DOCUMENT_FILE_ENDPOINT_TEMPLATE ||
+  env.VITE_PDF_ENDPOINT_TEMPLATE ||
+  "/api/v1/documents/{id}/file";
 
 export const API_BASE_URL = (
   env.VITE_API_BASE_URL || ""
@@ -24,9 +28,8 @@ export const API_ENDPOINTS = {
     env.VITE_REPLACE_ENDPOINT_TEMPLATE ||
     "/api/v1/documents/{id}",
 
-  pdf:
-    env.VITE_PDF_ENDPOINT_TEMPLATE ||
-    "/api/v1/documents/{id}/file",
+  documentFile: documentFileEndpoint,
+  pdf: documentFileEndpoint,
 
   pdfPagePreview:
     env.VITE_PDF_PAGE_PREVIEW_ENDPOINT_TEMPLATE ||

@@ -2,8 +2,11 @@ import logging
 import re
 from collections import defaultdict
 
+from pydantic import ValidationError
+
 from app.core.config import settings
 from app.db import sqlite_store
+from app.models.schema import DOCXLocatorSegment
 from app.services.citations import quote_matches_source
 from app.services.hybrid_retrieval import hybrid_search
 from app.services.llm import generate_grounded_answer
@@ -58,15 +61,53 @@ def _locator_source_fields(item: dict) -> dict:
     """Expose locator metadata without rewriting the stored metadata object."""
     structural_metadata = item.get("structural_metadata")
     locator_mapping = item.get("locator_mapping")
+    invalid_marker = (
+        locator_mapping is not None
+        and (
+            not isinstance(locator_mapping, dict)
+            or not locator_mapping
+        )
+    )
 
-    if locator_mapping is None and isinstance(structural_metadata, dict):
-        locator_mapping = structural_metadata.get("locator_mapping")
-        if locator_mapping is None and (
-            "mapping_status" in structural_metadata
-            or "locator_segments" in structural_metadata
-        ):
-            locator_mapping = structural_metadata
+    if locator_mapping is None:
+        if isinstance(structural_metadata, dict):
+            locator_mapping = structural_metadata.get("locator_mapping")
+            if locator_mapping is None and (
+                "mapping_status" in structural_metadata
+                or "locator_segments" in structural_metadata
+            ):
+                locator_mapping = structural_metadata
+        elif isinstance(structural_metadata, list):
+            locator_records = [
+                entry
+                for entry in structural_metadata
+                if isinstance(entry, dict)
+                and entry.get("metadata_type") == "docx_locator_mapping"
+            ]
+            matching_records = [
+                entry
+                for entry in locator_records
+                if isinstance(entry.get("locator_mapping"), dict)
+                and (
+                    entry["locator_mapping"].get("chunk_id")
+                    == item.get("chunk_id")
+                    or (
+                        entry["locator_mapping"].get("chunk_id") is None
+                        and len(locator_records) == 1
+                    )
+                )
+            ]
+            if len(matching_records) == 1:
+                locator_mapping = matching_records[0].get("locator_mapping")
+                invalid_marker = not isinstance(locator_mapping, dict)
+            elif locator_records:
+                invalid_marker = True
 
+    if locator_mapping is not None and (
+        not isinstance(locator_mapping, dict)
+        or not locator_mapping
+    ):
+        invalid_marker = True
     if not isinstance(locator_mapping, dict):
         locator_mapping = {}
 
@@ -87,12 +128,92 @@ def _locator_source_fields(item: dict) -> dict:
         if isinstance(first_segment, dict):
             version_id = first_segment.get("document_version_id")
 
+    locator_mapping_status = (
+        item.get("locator_mapping_status")
+        or locator_mapping.get("mapping_status")
+    )
+    if (
+        locator_mapping_status in ("ambiguous", "unresolved")
+        and locator_segments is None
+    ):
+        locator_segments = []
+    has_locator_data = (
+        invalid_marker
+        or bool(locator_mapping)
+        or locator_mapping_status is not None
+        or locator_segments is not None
+    )
+
+    if has_locator_data:
+        try:
+            if invalid_marker:
+                raise ValueError(
+                    "Structural metadata has an invalid locator mapping marker."
+                )
+            if locator_mapping_status not in {
+                "resolved",
+                "ambiguous",
+                "unresolved",
+            }:
+                raise ValueError("Locator mapping status is invalid.")
+            mapping_version_id = locator_mapping.get(
+                "document_version_id"
+            )
+            mapping_chunk_id = locator_mapping.get("chunk_id")
+            if (
+                mapping_version_id is not None
+                and mapping_version_id != version_id
+            ):
+                raise ValueError(
+                    "Locator mapping belongs to a different source version."
+                )
+            if (
+                mapping_chunk_id is not None
+                and item.get("chunk_id") is not None
+                and mapping_chunk_id != item.get("chunk_id")
+            ):
+                raise ValueError(
+                    "Locator mapping belongs to a different source chunk."
+                )
+            if not isinstance(locator_segments, list):
+                raise ValueError("Locator segments must be a list.")
+            if locator_mapping_status == "resolved":
+                if not locator_segments:
+                    raise ValueError(
+                        "A resolved locator mapping must contain segments."
+                    )
+                if mapping_version_id is None:
+                    raise ValueError(
+                        "A resolved locator mapping requires a version ID."
+                    )
+                validated_segments = [
+                    DOCXLocatorSegment.model_validate(segment)
+                    for segment in locator_segments
+                ]
+                if version_id is None or any(
+                    not segment.is_verified
+                    or segment.document_version_id != version_id
+                    for segment in validated_segments
+                ):
+                    raise ValueError(
+                        "Resolved locator segments must match the source version."
+                    )
+            elif locator_segments:
+                raise ValueError(
+                    "Ambiguous or unresolved mappings cannot expose selected segments."
+                )
+        except (TypeError, ValueError, ValidationError):
+            logger.warning(
+                "Ignoring invalid DOCX locator metadata for chunk %s.",
+                item.get("chunk_id"),
+                exc_info=True,
+            )
+            locator_mapping_status = "unresolved"
+            locator_segments = []
+
     return {
         "version_id": version_id,
-        "locator_mapping_status": (
-            item.get("locator_mapping_status")
-            or locator_mapping.get("mapping_status")
-        ),
+        "locator_mapping_status": locator_mapping_status,
         "locator_segments": locator_segments,
     }
 

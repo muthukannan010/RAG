@@ -83,10 +83,20 @@ export function extractSearchResults(payload) {
 export function normalizeSource(item, index = 0) {
   const metadata = item.metadata ?? {};
   const structuralMetadata = item.structural_metadata ?? null;
+  const locatorRecords = Array.isArray(structuralMetadata)
+    ? structuralMetadata.filter(
+        (entry) => entry?.metadata_type === "docx_locator_mapping"
+      )
+    : [];
+  const listLocatorMapping =
+    locatorRecords.length === 1
+      ? locatorRecords[0]?.locator_mapping
+      : null;
   const embeddedLocatorMapping =
     item.locator_mapping ??
     metadata.locator_mapping ??
     structuralMetadata?.locator_mapping ??
+    listLocatorMapping ??
     (
       structuralMetadata &&
       typeof structuralMetadata === "object" &&

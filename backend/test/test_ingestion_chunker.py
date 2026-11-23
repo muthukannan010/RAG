@@ -3,6 +3,7 @@ from io import BytesIO
 from docx import Document
 
 from app.services.chunker import chunk_pages
+from app.services import ingestion
 from app.services.ingestion import extract_document_pages
 
 
@@ -157,3 +158,75 @@ def test_docx_table_keeps_identity_position_and_readable_text():
     assert table["metadata"]["element_id"]
     assert table["metadata"]["original_text"]
     assert "<table>" in table["metadata"]["table_html"]
+
+
+def test_prepare_docx_attaches_versioned_locator_metadata(monkeypatch):
+    monkeypatch.setattr(
+        ingestion,
+        "embed_texts",
+        lambda texts: [[0.0] for _ in texts],
+    )
+
+    prepared = ingestion.prepare_document(
+        _make_docx(),
+        filename="sample.docx",
+        document_version_id="version-1",
+    )
+
+    assert len(prepared["chunks"]) == 1
+    chunk = prepared["chunks"][0]
+    metadata = chunk["provenance"]
+    locator_record = metadata[-1]
+    mapping = locator_record["locator_mapping"]
+
+    assert locator_record["metadata_type"] == "docx_locator_mapping"
+    assert mapping["mapping_status"] == "resolved"
+    assert mapping["document_version_id"] == "version-1"
+    assert "original_chunk_text" not in mapping
+    assert chunk["text"]
+    assert all(
+        segment["document_version_id"] == "version-1"
+        for segment in mapping["locator_segments"]
+    )
+    assert any(
+        segment["element_type"] == "table_cell_paragraph"
+        for segment in mapping["locator_segments"]
+    )
+    assert {item["element_type"] for item in metadata[:-1]} >= {
+        "Title",
+        "Table",
+    }
+
+
+def test_docx_locator_failure_does_not_fail_ingestion(
+    monkeypatch,
+    caplog,
+):
+    monkeypatch.setattr(
+        ingestion,
+        "embed_texts",
+        lambda texts: [[0.0] for _ in texts],
+    )
+
+    def fail_index(_document_bytes):
+        raise ValueError("synthetic locator failure")
+
+    monkeypatch.setattr(
+        ingestion,
+        "build_docx_ooxml_index",
+        fail_index,
+    )
+
+    prepared = ingestion.prepare_document(
+        _make_docx(),
+        filename="sample.docx",
+        document_version_id="version-1",
+    )
+
+    assert prepared["chunks"]
+    mapping = prepared["chunks"][0]["provenance"][-1][
+        "locator_mapping"
+    ]
+    assert mapping["mapping_status"] == "unresolved"
+    assert mapping["locator_segments"] == []
+    assert "continuing ingestion" in caplog.text

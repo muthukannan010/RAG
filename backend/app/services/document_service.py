@@ -102,12 +102,12 @@ def _store_version(
 
     # Extract text, create chunks and generate embeddings before
     # activating the new version.
+    version_id = str(uuid.uuid4())
     prepared = prepare_document(
         pdf_bytes,
         filename=filename,
+        document_version_id=version_id,
     )
-
-    version_id = str(uuid.uuid4())
 
     extension = Path(filename).suffix.lower()
     documents_root = settings.documents_dir.resolve()

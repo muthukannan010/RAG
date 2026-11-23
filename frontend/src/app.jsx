@@ -9,9 +9,15 @@ import { logError } from "./utils/logger";
 import Sidebar from "./components/Sidebar";
 import ChatPanel from "./components/ChatPanel";
 import PDFViewer from "./components/PDFViewer";
+import DOCXViewer from "./components/DOCXViewer";
+import OriginalFileViewer from "./components/OriginalFileViewer";
 
 import useDocuments from "./hooks/useDocuments";
 import useSearch from "./hooks/useSearch";
+import {
+  getSourceFileFormat,
+  getSourceViewerType,
+} from "./utils/viewerRouting";
 
 function getViewerFromLocation() {
   const match = window.location.pathname.match(
@@ -86,6 +92,12 @@ function App() {
     isUploading ||
     isSearching ||
     deletingId !== null;
+  const viewerType = viewerSource
+    ? getSourceViewerType(viewerSource)
+    : null;
+  const viewerKey = viewerSource
+    ? `${viewerSource.documentId}:${viewerSource.versionId || ""}`
+    : "";
 
   const refreshDocuments = useCallback(() => {
     void loadDocuments();
@@ -280,10 +292,26 @@ function App() {
 
       <div className="workspace">
         {viewerSource ? (
-          <PDFViewer
-            source={viewerSource}
-            onBack={returnToChat}
-          />
+          viewerType === "docx" ? (
+            <DOCXViewer
+              key={viewerKey}
+              source={viewerSource}
+              onBack={returnToChat}
+            />
+          ) : viewerType === "preview" ? (
+            <OriginalFileViewer
+              key={viewerKey}
+              documentId={viewerSource.documentId}
+              filename={viewerSource.filename}
+              format={getSourceFileFormat(viewerSource)}
+              onBack={returnToChat}
+            />
+          ) : (
+            <PDFViewer
+              source={viewerSource}
+              onBack={returnToChat}
+            />
+          )
         ) : (
           <>
             <Sidebar

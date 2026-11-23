@@ -11,6 +11,9 @@ from unstructured.partition.text import partition_text
 
 from app.core.config import settings
 from app.services.chunker import chunk_pages
+from app.services.docx_alignment import align_docx_elements
+from app.services.docx_chunk_mapping import map_chunks_to_docx_locators
+from app.services.docx_ooxml_index import build_docx_ooxml_index
 from app.services.embedding import embed_texts
 from app.services.pdf_processor import extract_pdf_pages
 
@@ -336,11 +339,11 @@ def _normalize_unstructured_elements(
     ]
 
 
-def _extract_unstructured_pages(
+def _extract_unstructured_elements(
     document_bytes: bytes,
     filename: str,
     extension: str,
-) -> list[dict[str, Any]]:
+) -> list[Any]:
     try:
         if extension == ".json":
             try:
@@ -373,6 +376,19 @@ def _extract_unstructured_pages(
             f"Could not extract text from '{filename}'."
         ) from exc
 
+    return elements
+
+
+def _extract_unstructured_pages(
+    document_bytes: bytes,
+    filename: str,
+    extension: str,
+) -> list[dict[str, Any]]:
+    elements = _extract_unstructured_elements(
+        document_bytes,
+        filename,
+        extension,
+    )
     pages = _normalize_unstructured_elements(
         elements,
         filename,
@@ -384,6 +400,106 @@ def _extract_unstructured_pages(
         )
 
     return pages
+
+
+def _unresolved_docx_mapping(
+    chunk: dict[str, Any],
+    document_version_id: str,
+) -> dict[str, Any]:
+    return {
+        "chunk_id": chunk.get("id"),
+        "chunk_index": chunk.get("chunk_index"),
+        "document_version_id": document_version_id,
+        "original_chunk_text": chunk.get("text"),
+        "mapping_status": "unresolved",
+        "locator_segments": [],
+        "diagnostics": [
+            "DOCX locator generation failed; see server logs."
+        ],
+    }
+
+
+def _attach_docx_locator_metadata(
+    chunks: list[dict[str, Any]],
+    extraction_elements,
+    document_bytes: bytes,
+    document_version_id: str,
+) -> None:
+    try:
+        structural_index = build_docx_ooxml_index(document_bytes)
+        alignments = align_docx_elements(
+            extraction_elements,
+            structural_index,
+            document_version_id,
+        )
+        mappings = map_chunks_to_docx_locators(
+            chunks,
+            alignments,
+            structural_index,
+            document_version_id,
+        )
+        if len(mappings) != len(chunks):
+            raise RuntimeError(
+                "DOCX locator mapping returned an unexpected result count."
+            )
+        for chunk, mapping in zip(chunks, mappings):
+            if (
+                not isinstance(mapping, dict)
+                or mapping.get("chunk_id") != chunk.get("id")
+                or mapping.get("document_version_id")
+                != document_version_id
+                or mapping.get("mapping_status")
+                not in {"resolved", "ambiguous", "unresolved"}
+                or not isinstance(mapping.get("locator_segments"), list)
+            ):
+                raise RuntimeError(
+                    "DOCX locator mapping returned an invalid result."
+                )
+    except Exception:
+        logger.exception(
+            "DOCX locator generation failed; continuing ingestion "
+            "without verified locators."
+        )
+        mappings = [
+            _unresolved_docx_mapping(chunk, document_version_id)
+            for chunk in chunks
+        ]
+
+    counts = {
+        status: sum(
+            mapping["mapping_status"] == status
+            for mapping in mappings
+        )
+        for status in ("resolved", "ambiguous", "unresolved")
+    }
+    logger.info(
+        "DOCX locator mapping for version %s: %s resolved, "
+        "%s ambiguous, %s unresolved chunks.",
+        document_version_id,
+        counts["resolved"],
+        counts["ambiguous"],
+        counts["unresolved"],
+    )
+
+    for chunk, mapping in zip(chunks, mappings):
+        provenance = chunk.get("provenance")
+        structural_metadata = (
+            list(provenance)
+            if isinstance(provenance, list)
+            else []
+        )
+        persisted_mapping = {
+            key: value
+            for key, value in mapping.items()
+            if key != "original_chunk_text"
+        }
+        structural_metadata.append(
+            {
+                "metadata_type": "docx_locator_mapping",
+                "locator_mapping": persisted_mapping,
+            }
+        )
+        chunk["provenance"] = structural_metadata
 
 
 def extract_document_pages(
@@ -422,6 +538,7 @@ def extract_document_pages(
 def prepare_document(
     pdf_bytes: bytes,
     filename: str | None = None,
+    document_version_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Convert a document into pages, chunks and embeddings.
@@ -436,7 +553,35 @@ def prepare_document(
         raise ValueError("The uploaded document is empty.")
 
     is_pdf = _is_pdf_document(pdf_bytes, filename)
-    pages = extract_document_pages(pdf_bytes, filename)
+    safe_filename = _safe_filename(filename) if filename else None
+    extension = (
+        Path(safe_filename).suffix.lower()
+        if safe_filename is not None
+        else ""
+    )
+    docx_elements = None
+
+    if (
+        not is_pdf
+        and extension == ".docx"
+        and document_version_id is not None
+    ):
+        docx_elements = _extract_unstructured_elements(
+            pdf_bytes,
+            safe_filename,
+            extension,
+        )
+        pages = _normalize_unstructured_elements(
+            docx_elements,
+            safe_filename,
+            extension,
+        )
+        if not pages:
+            raise ValueError(
+                f"No extractable text was found in '{safe_filename}'."
+            )
+    else:
+        pages = extract_document_pages(pdf_bytes, filename)
 
     chunks = chunk_pages(
         pages,
@@ -451,6 +596,14 @@ def prepare_document(
                 "Image-only scanned PDFs require OCR."
             )
         raise ValueError("No extractable text was found in this document.")
+
+    if docx_elements is not None and document_version_id is not None:
+        _attach_docx_locator_metadata(
+            chunks,
+            docx_elements,
+            pdf_bytes,
+            document_version_id,
+        )
 
     if is_pdf:
         logger.info(
