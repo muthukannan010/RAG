@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Local LLM settings
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "mistral-nemo:12b"
-    ollama_timeout_seconds: int = 120
+    ollama_timeout_seconds: int = 300
 
     # RAG context preparation
     rag_max_context_chunks: int = 5

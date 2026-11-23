@@ -104,3 +104,26 @@ test("preserves locator mapping nested in structural metadata", () => {
   assert.equal(source.docxLocatorNavigable, true);
   assert.strictEqual(source.structuralMetadata, structuralMetadata);
 });
+
+test("extracts a locator mapping record from provenance metadata", () => {
+  const mapping = {
+    document_version_id: "version-1",
+    mapping_status: "resolved",
+    locator_segments: [resolvedSegment],
+  };
+  const structuralMetadata = [
+    { format: "docx", element_type: "Paragraph" },
+    {
+      metadata_type: "docx_locator_mapping",
+      locator_mapping: mapping,
+    },
+  ];
+  const source = normalizeSource({
+    filename: "sample.docx",
+    structural_metadata: structuralMetadata,
+  });
+
+  assert.equal(source.docxLocatorNavigable, true);
+  assert.equal(source.versionId, "version-1");
+  assert.strictEqual(source.structuralMetadata, structuralMetadata);
+});

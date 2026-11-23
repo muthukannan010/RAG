@@ -344,6 +344,31 @@ def test_rag_preserves_metadata_in_display_sources_not_llm_context(
             "section_path": ["Overview"],
         }
     ]
+    locator_mapping = {
+        "chunk_id": "docx-chunk",
+        "document_version_id": "version-1",
+        "mapping_status": "resolved",
+        "locator_segments": [
+            {
+                "document_version_id": "version-1",
+                "element_type": "paragraph",
+                "structural_path": [
+                    {"kind": "paragraph", "index": 0}
+                ],
+                "paragraph_index": 0,
+                "text_range": {"start": 0, "end": 4},
+                "mapping_status": "resolved",
+            }
+        ],
+        "diagnostics": [],
+    }
+    structural_metadata = [
+        *provenance,
+        {
+            "metadata_type": "docx_locator_mapping",
+            "locator_mapping": locator_mapping,
+        },
+    ]
     retrieved = [
         {
             "chunk_id": "docx-chunk",
@@ -353,23 +378,7 @@ def test_rag_preserves_metadata_in_display_sources_not_llm_context(
             "page_number": 1,
             "content": "A passage with structural metadata.",
             "bbox": [],
-            "structural_metadata": provenance,
-            "locator_mapping": {
-                "document_version_id": "version-1",
-                "mapping_status": "resolved",
-                "locator_segments": [
-                    {
-                        "document_version_id": "version-1",
-                        "element_type": "paragraph",
-                        "structural_path": [
-                            {"kind": "paragraph", "index": 0}
-                        ],
-                        "paragraph_index": 0,
-                        "text_range": {"start": 0, "end": 4},
-                        "mapping_status": "resolved",
-                    }
-                ],
-            },
+            "structural_metadata": structural_metadata,
         }
     ]
     captured = {}
@@ -395,7 +404,7 @@ def test_rag_preserves_metadata_in_display_sources_not_llm_context(
 
     result = rag.answer_question("What does the passage say?")
 
-    assert result["results"][0]["structural_metadata"] == provenance
+    assert result["results"][0]["structural_metadata"] == structural_metadata
     assert result["results"][0]["version_id"] == "version-1"
     assert result["results"][0]["locator_mapping_status"] == "resolved"
     assert result["results"][0]["locator_segments"][0]["text_range"] == {
@@ -403,6 +412,31 @@ def test_rag_preserves_metadata_in_display_sources_not_llm_context(
         "end": 4,
     }
     assert "structural_metadata" not in captured["sources"][0]
+
+
+def test_invalid_persisted_locator_metadata_is_logged_and_not_verified(
+    caplog,
+):
+    source_fields = rag._locator_source_fields(
+        {
+            "chunk_id": "chunk-1",
+            "version_id": "version-1",
+            "structural_metadata": [
+                {
+                    "metadata_type": "docx_locator_mapping",
+                    "locator_mapping": {
+                        "document_version_id": "version-1",
+                        "mapping_status": "resolved",
+                        "locator_segments": "{invalid-json}",
+                    },
+                }
+            ],
+        }
+    )
+
+    assert source_fields["locator_mapping_status"] == "unresolved"
+    assert source_fields["locator_segments"] == []
+    assert "Ignoring invalid DOCX locator metadata" in caplog.text
 
 
 @pytest.mark.parametrize(

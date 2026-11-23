@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import HighlightText from "./HighlightText.jsx";
 import Icon from "./Icon.jsx";
+import { getSourceViewerType } from "../utils/viewerRouting.js";
 
 function isPdfFilename(filename) {
   if (typeof filename !== "string") {
@@ -30,7 +31,9 @@ export default function SourceCard({
   const hasPage =
     source.page != null &&
     Number.isFinite(Number(source.page));
-  const isPdf = isPdfFilename(source.filename);
+  const viewerType = getSourceViewerType(source);
+  const isPdf =
+    viewerType === "pdf" || isPdfFilename(source.filename);
 
   return (
     <section className="source-card">
@@ -70,7 +73,9 @@ export default function SourceCard({
             title={
               isPdf
                 ? `Open cited page ${source.page ?? ""}`
-                : "Preview cited passage"
+                : viewerType === "passage"
+                  ? "Preview cited passage"
+                  : "Preview original document"
             }
           >
             [{source.sourceRef}]
@@ -161,7 +166,9 @@ export default function SourceCard({
         >
           {isPdf
             ? `[ View Page ${source.page ?? "—"} ]`
-            : "[ View Passage ]"}
+            : viewerType === "passage"
+              ? "[ View Passage ]"
+              : "[ Preview Original File ]"}
         </button>
       </div>
     </section>

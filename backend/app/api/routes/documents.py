@@ -285,6 +285,14 @@ def get_document_file(document_id: str):
         content_disposition_type="inline",
         headers={
             "Cache-Control": "no-store",
+            **(
+                {
+                    "X-Document-Version-ID":
+                    str(record["active_version_id"])
+                }
+                if record.get("active_version_id") is not None
+                else {}
+            ),
         },
     )
 
