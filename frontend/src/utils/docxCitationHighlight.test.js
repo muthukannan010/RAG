@@ -129,6 +129,64 @@ test("highlights overlapping citation ranges independently and scrolls to the fi
   }
 });
 
+test("replaces all citation highlights with only the selected segment", () => {
+  const restore = installHighlightApi();
+  try {
+    const rendered = createRenderedRoot();
+    applyDocxCitationHighlights(rendered.root, [
+      {
+        mappingStatus: "resolved",
+        domElement: rendered.element,
+        textNodeRanges: [
+          {
+            textNode: rendered.textNode,
+            startOffset: 0,
+            endOffset: 4,
+          },
+        ],
+      },
+      {
+        mappingStatus: "resolved",
+        domElement: rendered.element,
+        textNodeRanges: [
+          {
+            textNode: rendered.textNode,
+            startOffset: 5,
+            endOffset: 12,
+          },
+        ],
+      },
+    ]);
+    assert.equal(
+      globalThis.CSS.highlights.get("docx-citation").ranges.length,
+      2
+    );
+
+    const result = applyDocxCitationHighlights(rendered.root, [
+      {
+        mappingStatus: "resolved",
+        domElement: rendered.element,
+        textNodeRanges: [
+          {
+            textNode: rendered.textNode,
+            startOffset: 5,
+            endOffset: 12,
+          },
+        ],
+      },
+    ]);
+
+    assert.equal(result.highlighted, true);
+    assert.equal(result.segmentCount, 1);
+    assert.equal(
+      globalThis.CSS.highlights.get("docx-citation").ranges.length,
+      1
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("does not highlight unresolved or detached DOM ranges", () => {
   const restore = installHighlightApi();
   try {

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import "./app.css";
 
-import { API_ENDPOINTS } from "./config/endpoint";
-import { apiRequest } from "./api/client";
 import { logError } from "./utils/logger";
 
 import Sidebar from "./components/Sidebar";
@@ -55,9 +53,7 @@ function isPdfFilename(filename) {
 function App() {
   const fileInputRef = useRef(null);
 
-  const [apiStatus, setApiStatus] = useState("checking");
   const [question, setQuestion] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [uploadTargetId, setUploadTargetId] = useState(null);
   const [localNotice, setLocalNotice] = useState("");
   const [viewerSource, setViewerSource] = useState(
@@ -85,7 +81,6 @@ function App() {
     messages,
     isSearching,
     sendQuestion,
-    clearConversation,
   } = searchState;
 
   const isBusy =
@@ -118,40 +113,6 @@ function App() {
       window.removeEventListener("popstate", handleHistoryChange);
   }, []);
 
-  // Check backend health and recheck periodically.
-  useEffect(() => {
-    let active = true;
-
-    async function checkHealth() {
-      try {
-        await apiRequest(API_ENDPOINTS.health);
-
-        if (active) {
-          setApiStatus("online");
-        }
-      } catch (error) {
-        if (active) {
-          setApiStatus("offline");
-        }
-
-        logError("Backend health check failed", {
-          message: error.message,
-        });
-      }
-    }
-
-    void checkHealth();
-
-    const timer = window.setInterval(
-      checkHealth,
-      45000000000
-    );
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, []);
 
   // Open the file picker for a new document.
   function openUploadPicker() {
@@ -195,20 +156,6 @@ function App() {
     }
 
     uploadDocument(file, targetId);
-  }
-
-  function startNewConversation() {
-    if (
-      messages.length > 0 &&
-      !window.confirm(
-        "Start a new conversation and clear these messages?"
-      )
-    ) {
-      return;
-    }
-
-    clearConversation();
-    setQuestion("");
   }
 
   // Keep the PDF viewer inside this app so chat state remains mounted.
@@ -339,12 +286,6 @@ function App() {
               isBusy={isBusy}
               onUploadClick={openUploadPicker}
               onOpenSource={openSource}
-              onNewConversation={startNewConversation}
-              apiStatus={apiStatus}
-              settingsOpen={settingsOpen}
-              onToggleSettings={() =>
-                setSettingsOpen((current) => !current)
-              }
             />
           </>
         )}
