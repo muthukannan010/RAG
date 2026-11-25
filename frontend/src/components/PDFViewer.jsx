@@ -35,9 +35,19 @@ export default function PDFViewer({ source, onBack }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const scrollRef = useRef(null);
+  const missingDocumentIdError =
+    isPdf && !source.documentId
+      ? "This citation does not include a document ID."
+      : "";
+  const effectiveError = missingDocumentIdError || error;
+  const effectiveLoading = isLoading && !missingDocumentIdError;
 
   useEffect(() => {
     if (!isPdf) {
+      return undefined;
+    }
+
+    if (!source.documentId) {
       return undefined;
     }
 
@@ -118,12 +128,7 @@ export default function PDFViewer({ source, onBack }) {
       }
     }
 
-    if (!source.documentId) {
-      setError("This citation does not include a document ID.");
-      setIsLoading(false);
-    } else {
-      void loadPage();
-    }
+    void loadPage();
 
     return () => {
       controller.abort();
@@ -131,7 +136,7 @@ export default function PDFViewer({ source, onBack }) {
         URL.revokeObjectURL(imageUrl);
       }
     };
-  }, [isPdf, page, source.documentId, source.page, source.quotedText]);
+  }, [isPdf, page, source.documentId, source.page, source.quotedText, source.text]);
 
   if (!isPdf) {
     const hasSectionIndex =
@@ -314,16 +319,16 @@ export default function PDFViewer({ source, onBack }) {
       )}
 
       <div className="pdf-page-scroll" ref={scrollRef}>
-        {isLoading && (
+        {effectiveLoading && (
           <div className="pdf-viewer-status" role="status">
             <span className="tiny-spinner" />
             Loading page...
           </div>
         )}
-        {error && (
+        {effectiveError && (
           <div className="pdf-viewer-error" role="alert">
             <strong>Could not display this PDF</strong>
-            <p>{error}</p>
+            <p>{effectiveError}</p>
           </div>
         )}
         {pageImage && (

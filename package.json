@@ -3,5 +3,8 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix ./frontend run dev"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.58.0"
   }
 }

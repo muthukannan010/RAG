@@ -11,7 +11,6 @@ import {
 import {
   applyDocxCitationHighlights,
   clearDocxCitationHighlights,
-  scrollToDocxCitationSegment,
 } from "../utils/docxCitationHighlight";
 
 const EMPTY_LOCATOR_SEGMENTS = [];
@@ -87,7 +86,7 @@ export default function DOCXViewer({ source, onBack }) {
   const locatorKey = JSON.stringify(locatorSegments);
   const [loadState, setLoadState] = useState(null);
   const [mappingState, setMappingState] = useState(null);
-  const [activeSegment, setActiveSegment] = useState(0);
+  const [activeSegment, setActiveSegment] = useState(null);
   const bodyRef = useRef(null);
   const styleRef = useRef(null);
 
@@ -197,7 +196,7 @@ export default function DOCXViewer({ source, onBack }) {
     }
 
     clearDocxCitationHighlights(bodyContainer);
-    queueMicrotask(() => setActiveSegment(0));
+    queueMicrotask(() => setActiveSegment(null));
 
     if (locatorSegments.length === 0) {
       queueMicrotask(() =>
@@ -308,6 +307,19 @@ export default function DOCXViewer({ source, onBack }) {
                 <span>
                   {resolvedMappings.length} verified citation segments
                 </span>
+                <button
+                  type="button"
+                  aria-current={activeSegment === null}
+                  onClick={() => {
+                    setActiveSegment(null);
+                    applyDocxCitationHighlights(
+                      bodyRef.current,
+                      resolvedMappings
+                    );
+                  }}
+                >
+                  All segments
+                </button>
                 {resolvedMappings.map((mapping, index) => (
                   <button
                     type="button"
@@ -315,7 +327,10 @@ export default function DOCXViewer({ source, onBack }) {
                     aria-current={activeSegment === index}
                     onClick={() => {
                       setActiveSegment(index);
-                      scrollToDocxCitationSegment(mapping);
+                      applyDocxCitationHighlights(
+                        bodyRef.current,
+                        [mapping]
+                      );
                     }}
                   >
                     Segment {index + 1}

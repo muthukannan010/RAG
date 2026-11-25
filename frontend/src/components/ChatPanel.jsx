@@ -35,10 +35,6 @@ export default function ChatPanel({
   isBusy,
   onUploadClick,
   onOpenSource,
-  onNewConversation,
-  apiStatus,
-  settingsOpen,
-  onToggleSettings,
 }) {
   const endRef = useRef(null);
 
